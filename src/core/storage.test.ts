@@ -30,6 +30,18 @@ describe('createCollection', () => {
     await collection.remove('a')
     expect(await collection.list()).toEqual([{ id: 'b', name: 'second' }])
   })
+
+  it('tells every subscriber about changes until they stop listening', async () => {
+    const collection = createCollection<{ id: string }>('items', memoryStore())
+    const heard: string[][] = []
+    const stop = collection.subscribe((items) => heard.push(items.map(({ id }) => id)))
+
+    await collection.save({ id: 'a' })
+    await collection.save({ id: 'b' })
+    stop()
+    await collection.remove('a')
+    expect(heard).toEqual([['a'], ['a', 'b']])
+  })
 })
 
 describe('createDocument', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { findChrome } from './chrome'
-import { dataDirectory, openCommand } from './system'
+import { dataDirectory, openCommand, openFolderCommand } from './system'
 
 describe('findChrome', () => {
   const installed = (...files: string[]) => (file: string) => files.includes(file)
@@ -54,5 +54,10 @@ describe('openCommand', () => {
     expect(openCommand(url, 'linux')).toEqual(['xdg-open', [url]])
     expect(openCommand(url, 'darwin')).toEqual(['open', [url]])
     expect(openCommand(url, 'win32')).toEqual(['rundll32', ['url.dll,FileProtocolHandler', url]])
+  })
+
+  it('opens folders in the file manager', () => {
+    expect(openFolderCommand('/home/me/.config/RailBook', 'linux')).toEqual(['xdg-open', ['/home/me/.config/RailBook']])
+    expect(openFolderCommand('C:\\RailBook', 'win32')).toEqual(['explorer', ['C:\\RailBook']])
   })
 })

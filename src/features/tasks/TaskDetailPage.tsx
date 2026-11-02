@@ -11,12 +11,12 @@ import { cancelWindowAlerts, scheduleWindowAlerts } from '../../platform/alerts'
 import { copyText } from '../../platform/clipboard'
 import { openOfficialPage } from '../../platform/officialPages'
 import { Icon } from '../../ui/Icon'
-import { Avatar, ConfirmSheet, PageHeader, SectionHead } from '../../ui/layout'
-import { describePassenger } from '../passengers/PassengerSheet'
+import { Avatar, ConfirmDialog, PageHeader, Panel } from '../../ui/layout'
+import { useToast } from '../../ui/toast'
 import { CopyPanel } from '../tatkal/CopyPanel'
 import { ReadinessCard } from '../tatkal/ReadinessCard'
 import { journeyOpensAt } from '../tatkal/tatkalWindow'
-import { Facts, RouteLine, TaskStatusChip, WindowHero, journeyFacts } from './TaskParts'
+import { Facts, Hero, WindowHero, journeyFacts } from './TaskParts'
 import { isActive, taskStatus } from './tasks'
 
 export function TaskDetailPage() {
@@ -25,62 +25,94 @@ export function TaskDetailPage() {
   const { items: journeys, loaded, save, remove } = useCollection(journeyCollection)
   const { items: passengers } = useCollection(passengerCollection)
   const { settings } = useSettings()
+  const toast = useToast()
   const [deleting, setDeleting] = useState(false)
   const now = useNow()
+  const trainName = useTrainName(journeys.find((other) => other.id === id)?.trainNumber ?? '')
 
   const journey = journeys.find((other) => other.id === id)
   if (!loaded) return null
   if (!journey) return <Navigate to="/tasks" replace />
 
   const status = taskStatus(journey, now)
+  const active = isActive(status)
   const chosen = passengers.filter((passenger) => journey.passengerIds.includes(passenger.id))
 
   const deleteTask = async () => {
     await remove(journey.id)
     navigate('/tasks', { replace: true })
     void cancelWindowAlerts(journey.id)
+    toast(`Deleted ${journey.from} → ${journey.to}`)
   }
 
   return (
     <>
       <PageHeader
-        title="Booking task"
-        subtitle={`${journey.from} to ${journey.to}`}
-        back="/tasks"
+        breadcrumbs={[{ label: 'Booking tasks', to: '/tasks' }]}
+        title={`${journey.from} → ${journey.to}`}
+        subtitle={`Train ${journey.trainNumber}${trainName ? ` ${trainName}` : ''} · ${journey.travelClass} · ${journey.quota ?? 'Tatkal'}`}
         actions={
           <>
-            <Link className="icon-button" to={`/tasks/${journey.id}/edit`} aria-label="Edit task">
-              <Icon name="edit" />
-            </Link>
-            <button type="button" className="icon-button" aria-label="Delete task" onClick={() => setDeleting(true)}>
-              <Icon name="trash" />
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Delete task"
+              title="Delete task"
+              onClick={() => setDeleting(true)}
+            >
+              <Icon name="trash" size={18} />
             </button>
+            <Link className="button secondary" to={`/tasks/${journey.id}/edit`}>
+              <Icon name="edit" size={16} />
+              Edit
+            </Link>
+            {active && (
+              <>
+                <button type="button" className="button secondary" onClick={() => openOfficialPage('booking')}>
+                  <Icon name="external" size={16} />
+                  Open IRCTC
+                </button>
+                <Link className="button" to={`/tasks/${journey.id}/run`}>
+                  <Icon name="play" size={16} />
+                  Start session
+                </Link>
+              </>
+            )}
           </>
         }
       />
 
-      {isActive(status) ? (
-        <WindowHero journey={journey} now={now} label="Booking window" />
-      ) : (
-        <OutcomeHero journey={journey} onRetry={() => save({ ...journey, outcome: undefined })} />
-      )}
+      <div className={active ? 'detail-layout' : 'detail-layout single'}>
+        <div className="detail-main">
+          {active ? (
+            <WindowHero
+              journey={journey}
+              now={now}
+              label="Booking window"
+              actions={
+                <Link className="button hero-button" to={`/tasks/${journey.id}/run`}>
+                  <Icon name="play" size={18} />
+                  Start booking session
+                </Link>
+              }
+            />
+          ) : (
+            <OutcomeHero journey={journey} onRetry={() => save({ ...journey, outcome: undefined })} />
+          )}
+          <SummaryPanel journey={journey} trainName={trainName} />
+          <PassengersPanel journey={journey} passengers={chosen} />
+        </div>
 
-      {isActive(status) && <AlertsCard journey={journey} minutes={settings.alertMinutes} />}
+        {active && (
+          <aside className="detail-aside">
+            <ReadinessCard journey={journey} onChange={save} />
+            <AlertsPanel journey={journey} minutes={settings.alertMinutes} />
+            <CopyPanel journey={journey} passengers={chosen} username={settings.profile.irctcUsername} />
+          </aside>
+        )}
+      </div>
 
-      <SummaryCard journey={journey} />
-      <PassengersCard passengers={chosen} />
-      {isActive(status) && (
-        <>
-          <ReadinessCard journey={journey} onChange={save} />
-          <CopyPanel journey={journey} passengers={chosen} username={settings.profile.irctcUsername} />
-          <button type="button" className="button secondary" onClick={() => openOfficialPage('booking')}>
-            <Icon name="external" />
-            Open IRCTC
-          </button>
-        </>
-      )}
-
-      <ConfirmSheet
+      <ConfirmDialog
         open={deleting}
         title="Delete this task?"
         body="Its alerts are cancelled too. Saved passengers and PNRs stay."
@@ -94,110 +126,115 @@ export function TaskDetailPage() {
 
 function OutcomeHero({ journey, onRetry }: { journey: Journey; onRetry: () => void }) {
   const { outcome } = journey
-  const [copied, setCopied] = useState(false)
+  const toast = useToast()
 
   if (outcome?.result === 'booked') {
     const checkStatus = async () => {
       await copyText(outcome.pnr)
-      setCopied(true)
       await openOfficialPage('pnr')
+      toast('PNR copied. Paste it on the enquiry page in your browser.')
     }
     return (
-      <section className="hero booked">
-        <div className="hero-top">
-          <span className="hero-label">Ticket booked</span>
-          <TaskStatusChip status="booked" />
-        </div>
-        <RouteLine from={journey.from} to={journey.to} />
-        <small>PNR</small>
-        <strong className="hero-countdown">{formatPnr(outcome.pnr)}</strong>
-        <small>
-          Booked {formatSavedDate(outcome.at)} in {formatDuration(outcome.seconds)}
-        </small>
-        <button type="button" className="button hero-button" onClick={checkStatus}>
-          <Icon name={copied ? 'check' : 'external'} />
-          {copied ? 'PNR copied, opening status page' : 'Check PNR status'}
-        </button>
-      </section>
+      <Hero
+        tone="booked"
+        label="Ticket booked"
+        status="booked"
+        journey={journey}
+        value={<span className="mono">{formatPnr(outcome.pnr)}</span>}
+        caption={`Booked ${formatSavedDate(outcome.at)} in ${formatDuration(outcome.seconds)}`}
+        footer={
+          <div className="hero-actions">
+            <button type="button" className="button hero-button" onClick={checkStatus}>
+              <Icon name="external" size={18} />
+              Check PNR status
+            </button>
+          </div>
+        }
+      />
     )
   }
 
   if (outcome?.result === 'not-booked') {
     return (
-      <section className="hero not-booked">
-        <div className="hero-top">
-          <span className="hero-label">Not booked</span>
-          <TaskStatusChip status="not-booked" />
-        </div>
-        <RouteLine from={journey.from} to={journey.to} />
-        <strong className="hero-title">{outcome.reason}</strong>
-        <small>Recorded {formatSavedDate(outcome.at)}</small>
-        <button type="button" className="button hero-button" onClick={onRetry}>
-          <Icon name="refresh" />
-          Reopen task
-        </button>
-      </section>
+      <Hero
+        tone="not-booked"
+        label="Not booked"
+        status="not-booked"
+        journey={journey}
+        value={outcome.reason}
+        caption={`Recorded ${formatSavedDate(outcome.at)}`}
+        footer={
+          <div className="hero-actions">
+            <button type="button" className="button hero-button" onClick={onRetry}>
+              <Icon name="refresh" size={18} />
+              Reopen task
+            </button>
+          </div>
+        }
+      />
     )
   }
 
   return (
-    <section className="hero expired">
-      <div className="hero-top">
-        <span className="hero-label">Journey date passed</span>
-        <TaskStatusChip status="expired" />
-      </div>
-      <RouteLine from={journey.from} to={journey.to} />
-      <small>Edit the task with a new date to use it again.</small>
-      <Link className="button hero-button" to={`/tasks/${journey.id}/edit`}>
-        <Icon name="edit" />
-        Edit task
-      </Link>
-    </section>
+    <Hero
+      tone="expired"
+      label="Journey date passed"
+      status="expired"
+      journey={journey}
+      value="Closed"
+      caption="Edit the task with a new date to use it again."
+      footer={
+        <div className="hero-actions">
+          <Link className="button hero-button" to={`/tasks/${journey.id}/edit`}>
+            <Icon name="edit" size={18} />
+            Edit task
+          </Link>
+        </div>
+      }
+    />
   )
 }
 
-function AlertsCard({ journey, minutes }: { journey: Journey; minutes: number[] }) {
+function AlertsPanel({ journey, minutes }: { journey: Journey; minutes: number[] }) {
   const [message, setMessage] = useState('')
 
   const setAlerts = async () => {
-    const result = await scheduleWindowAlerts(journey.id, `${journey.from} to ${journey.to}`, journeyOpensAt(journey), minutes)
+    const result = await scheduleWindowAlerts(
+      journey.id,
+      `${journey.from} to ${journey.to}`,
+      journeyOpensAt(journey),
+      minutes,
+    )
     if (result === null) setMessage('Notifications are turned off for RailBook.')
     else if (result.scheduled === 0) setMessage('The window is too close for alerts.')
-    else setMessage(`${result.scheduled} alerts set.`)
+    else setMessage(`${result.scheduled} alerts set. They appear while RailBook is open.`)
   }
 
   return (
-    <section className="card">
-      <div className="card-row">
-        <span className="option-icon">
-          <Icon name="bell" />
-        </span>
-        <span className="list-text">
-          <strong>Window alerts</strong>
-          <small>
-            {minutes.length > 0
-              ? `${minutes.join(', ')} min before booking opens`
-              : 'Choose lead times in Settings first'}
-          </small>
-        </span>
-        <button type="button" className="button small" disabled={minutes.length === 0} onClick={setAlerts}>
-          Set
+    <Panel
+      title="Window alerts"
+      description={
+        minutes.length > 0 ? `${minutes.join(', ')} min before booking opens` : 'Choose lead times in Settings first'
+      }
+      actions={
+        <button type="button" className="button secondary small" disabled={minutes.length === 0} onClick={setAlerts}>
+          <Icon name="bell" size={16} />
+          Set alerts
         </button>
-      </div>
+      }
+    >
       <small className="muted">
-        {message || 'Alerts appear while RailBook is open, so keep it running before the window.'}
+        {message || 'Desktop notifications, while RailBook is open. Keep it running before the window.'}
       </small>
-    </section>
+    </Panel>
   )
 }
 
-function SummaryCard({ journey }: { journey: Journey }) {
-  const trainName = useTrainName(journey.trainNumber)
+function SummaryPanel({ journey, trainName }: { journey: Journey; trainName: string | null }) {
   const preferences = journey.preferences
 
   return (
-    <section className="card">
-      <SectionHead title="Journey" />
+    <Panel title="Journey" actions={<Link to={`/tasks/${journey.id}/edit`}>Edit</Link>}>
       <Facts items={journeyFacts(journey, trainName)} />
       {preferences && (
         <div className="pills">
@@ -207,29 +244,48 @@ function SummaryCard({ journey }: { journey: Journey }) {
           {preferences.mobile && <span className="pill">Ticket to {preferences.mobile}</span>}
         </div>
       )}
-    </section>
+    </Panel>
   )
 }
 
-function PassengersCard({ passengers }: { passengers: Passenger[] }) {
+function PassengersPanel({ journey, passengers }: { journey: Journey; passengers: Passenger[] }) {
   return (
-    <section className="card">
-      <SectionHead title={`Passengers (${passengers.length})`} />
+    <Panel
+      title={`Passengers · ${passengers.length}`}
+      actions={<Link to={`/tasks/${journey.id}/edit`}>Change</Link>}
+      className="table-panel"
+    >
       {passengers.length === 0 ? (
-        <small className="muted">No passengers chosen. Edit the task to add some.</small>
+        <p className="table-empty muted">No passengers chosen. Edit the task to add some.</p>
       ) : (
-        <ul className="mini-list">
-          {passengers.map((passenger) => (
-            <li key={passenger.id}>
-              <Avatar id={passenger.id} name={passenger.name} />
-              <span className="list-text">
-                <strong>{passenger.name}</strong>
-                <small>{describePassenger(passenger)}</small>
-              </span>
-            </li>
-          ))}
-        </ul>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th className="numeric">Age</th>
+              <th>Gender</th>
+              <th>Berth</th>
+              <th>Food</th>
+            </tr>
+          </thead>
+          <tbody>
+            {passengers.map((passenger) => (
+              <tr key={passenger.id}>
+                <td>
+                  <span className="cell-person">
+                    <Avatar id={passenger.id} name={passenger.name} size={28} />
+                    {passenger.name}
+                  </span>
+                </td>
+                <td className="numeric">{passenger.age}</td>
+                <td>{passenger.gender}</td>
+                <td>{passenger.berthPreference === 'None' ? 'Any' : passenger.berthPreference}</td>
+                <td>{passenger.foodChoice ?? 'No food'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
-    </section>
+    </Panel>
   )
 }

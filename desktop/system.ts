@@ -17,9 +17,23 @@ export function openCommand(url: string, platform: NodeJS.Platform = process.pla
   return ['xdg-open', [url]]
 }
 
+export function openFolderCommand(folder: string, platform: NodeJS.Platform = process.platform): [string, string[]] {
+  if (platform === 'win32') return ['explorer', [folder]]
+  if (platform === 'darwin') return ['open', [folder]]
+  return ['xdg-open', [folder]]
+}
+
 /** Opens a web address in the person's default browser. */
 export function openExternal(url: string) {
-  const [command, args] = openCommand(url)
+  return launch(...openCommand(url))
+}
+
+/** Shows a folder in the file manager. */
+export function openFolder(folder: string) {
+  return launch(...openFolderCommand(folder))
+}
+
+function launch(command: string, args: string[]) {
   return new Promise<void>((resolve, reject) => {
     const child = spawn(command, args, { detached: true, stdio: 'ignore' })
     child.on('error', reject)

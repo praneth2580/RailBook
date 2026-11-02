@@ -1,6 +1,6 @@
 import type { Journey } from '../../core/types'
 import { Icon } from '../../ui/Icon'
-import { ProgressBar, SectionHead } from '../../ui/layout'
+import { Panel, ProgressBar } from '../../ui/layout'
 import { readinessChecks } from './readiness'
 
 export function toggleCheck(journey: Journey, id: string): Journey {
@@ -55,17 +55,9 @@ export function ReadinessCard({ journey, onChange }: { journey: Journey; onChang
   const done = checks.filter((check) => check.done).length
 
   return (
-    <section className="card">
-      <SectionHead
-        title="Readiness"
-        action={
-          <small className="muted">
-            {done} of {checks.length}
-          </small>
-        }
-      />
+    <Panel title="Readiness" description={`${done} of ${checks.length} checks done`}>
       <ProgressBar value={done / checks.length} label="Readiness" />
       <ReadinessList journey={journey} onChange={onChange} />
-    </section>
+    </Panel>
   )
 }

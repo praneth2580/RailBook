@@ -1,4 +1,6 @@
-import { useId, type ReactNode } from 'react'
+import { useId, useRef, type ReactNode } from 'react'
+import { Icon } from './Icon'
+import { useShortcut } from './shortcuts'
 
 // Choices are native radios and checkboxes under the styling, so keyboards and screen readers work as usual.
 
@@ -103,6 +105,42 @@ export function Switch({
         {description && <small>{description}</small>}
       </span>
       <input type="checkbox" role="switch" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    </label>
+  )
+}
+
+/** Filters the list on screen. Press / to jump to it and Escape to clear it. */
+export function SearchField({
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  label: string
+  placeholder: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  const input = useRef<HTMLInputElement>(null)
+  useShortcut('/', () => input.current?.focus())
+
+  return (
+    <label className="search-field">
+      <Icon name="search" size={16} />
+      <input
+        ref={input}
+        type="search"
+        aria-label={label}
+        placeholder={placeholder}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape') return
+          onChange('')
+          event.currentTarget.blur()
+        }}
+      />
+      {!value && <kbd>/</kbd>}
     </label>
   )
 }

@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { journeyCollection, passengerCollection } from '../../core/collections'
 import { formatJourneyDate, formatWindow, todayIso } from '../../core/format'
@@ -19,13 +19,46 @@ import {
 import { useTrainName } from '../../data/useTrainName'
 import { ChoiceChips, Segmented, Switch } from '../../ui/controls'
 import { Icon } from '../../ui/Icon'
-import { Avatar, Notice, PageHeader } from '../../ui/layout'
-import { PassengerSheet, describePassenger } from '../passengers/PassengerSheet'
+import { Avatar, Keys, Notice, Panel, useDocumentTitle } from '../../ui/layout'
+import { MOD_KEY, useShortcut } from '../../ui/shortcuts'
+import { useToast } from '../../ui/toast'
+import { PassengerDialog, describePassenger } from '../passengers/PassengerDialog'
 import { bookingOpensAt } from '../tatkal/tatkalWindow'
 import { Facts, PAYMENT_DETAILS, RouteLine } from './TaskParts'
 import { passengerLimit } from './tasks'
 
-const STEPS = ['Journey', 'Passengers', 'Preferences', 'Payment', 'Review'] as const
+const STEPS = [
+  {
+    label: 'Journey',
+    hint: 'Route, date and train',
+    title: 'Where and when?',
+    description: 'The route, date, class and train you want to book.',
+  },
+  {
+    label: 'Passengers',
+    hint: "Who's travelling",
+    title: "Who's travelling?",
+    description: 'Pick from your master list, or add someone new.',
+  },
+  {
+    label: 'Preferences',
+    hint: 'Upgrades, berths, insurance',
+    title: 'Booking preferences',
+    description: 'Reminders of what to tick on the official site.',
+  },
+  {
+    label: 'Payment',
+    hint: "How you'll pay",
+    title: 'How will you pay?',
+    description: 'RailBook reminds you which method to pick when it’s time.',
+  },
+  {
+    label: 'Review',
+    hint: 'Check and save',
+    title: 'Check and save',
+    description: 'Make sure everything is right before you save the task.',
+  },
+] as const
 
 interface TaskForm {
   from: string
@@ -84,6 +117,27 @@ export function TaskWizardPage() {
   )
 }
 
+function stepSummaries(form: TaskForm, passengers: Passenger[]) {
+  const names = passengers.filter(({ id }) => form.passengerIds.includes(id)).map(({ name }) => name.split(' ')[0])
+  const extras = [
+    form.preferences.autoUpgrade && 'Auto-upgrade',
+    form.preferences.confirmedBerthsOnly && 'Confirmed only',
+    form.preferences.travelInsurance && 'Insurance',
+  ].filter(Boolean)
+
+  return [
+    form.from && form.to
+      ? `${form.from} → ${form.to}${form.date ? ` · ${formatJourneyDate(form.date)}` : ''}`
+      : 'Route, date and train',
+    names.length > 0
+      ? `${names.slice(0, 2).join(', ')}${names.length > 2 ? ` +${names.length - 2}` : ''}`
+      : 'Pick passengers',
+    extras.length > 0 ? extras.join(', ') : 'No extras',
+    form.paymentMethod,
+    'Check and save',
+  ]
+}
+
 function Wizard({
   existing,
   passengers,
@@ -98,20 +152,33 @@ function Wizard({
   onSavePassenger: (passenger: Passenger) => Promise<void>
 }) {
   const navigate = useNavigate()
+  const toast = useToast()
+  const formRef = useRef<HTMLFormElement>(null)
   const [step, setStep] = useState(0)
+  // Edits can jump to any step; a new task opens steps as it reaches them.
+  const [furthest, setFurthest] = useState(existing ? STEPS.length - 1 : 0)
   const [form, setForm] = useState(() => initialForm(existing, passengers, defaultMobile))
   const update = (patch: Partial<TaskForm>) => setForm((current) => ({ ...current, ...patch }))
+  useDocumentTitle(existing ? 'Edit booking task' : 'New booking task')
+  useShortcut('Enter', () => formRef.current?.requestSubmit(), { mod: true })
 
   const goTo = (index: number) => {
+    // Moving forward from the rail still has to pass this step's checks.
+    if (index > step && !formRef.current?.reportValidity()) return
     setStep(index)
+    setFurthest((current) => Math.max(current, index))
     window.scrollTo(0, 0)
   }
-  const back = () => (step === 0 ? navigate(existing ? `/tasks/${existing.id}` : '/tasks') : goTo(step - 1))
+  const cancel = () => navigate(existing ? `/tasks/${existing.id}` : '/tasks')
+  const back = () => (step === 0 ? cancel() : goTo(step - 1))
   const last = step === STEPS.length - 1
-  const canContinue = STEPS[step] !== 'Passengers' || form.passengerIds.length > 0
+  const canContinue = STEPS[step]?.label !== 'Passengers' || form.passengerIds.length > 0
+  const summaries = stepSummaries(form, passengers)
+  const current = STEPS[step] ?? STEPS[0]
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
+    if (!canContinue) return
     if (!last) {
       goTo(step + 1)
       return
@@ -124,44 +191,94 @@ function Wizard({
       createdAt: existing?.createdAt ?? new Date().toISOString(),
     }
     await onSave(journey)
+    toast(existing ? 'Task saved' : `Created ${journey.from} → ${journey.to}`)
     navigate(`/tasks/${journey.id}`, { replace: true })
   }
 
   return (
-    <form className="wizard" onSubmit={submit}>
-      <PageHeader
-        title={existing ? 'Edit booking task' : 'New booking task'}
-        subtitle={`Step ${step + 1} of ${STEPS.length} · ${STEPS[step]}`}
-        back={back}
-      />
-      <ol className="stepper" aria-label="Steps">
-        {STEPS.map((label, index) => (
-          <li
-            key={label}
-            className={index < step ? 'done' : index === step ? 'current' : undefined}
-            aria-current={index === step ? 'step' : undefined}
-          >
-            <span>{label}</span>
-          </li>
-        ))}
-      </ol>
-
-      {step === 0 && <JourneyStep form={form} update={update} isNew={!existing} />}
-      {step === 1 && (
-        <PassengersStep form={form} update={update} passengers={passengers} onSavePassenger={onSavePassenger} />
-      )}
-      {step === 2 && <PreferencesStep form={form} update={update} />}
-      {step === 3 && <PaymentStep form={form} update={update} />}
-      {step === 4 && <ReviewStep form={form} passengers={passengers} goTo={goTo} />}
-
-      <div className="wizard-footer">
-        <button type="button" className="button secondary" onClick={back}>
-          {step === 0 ? 'Cancel' : 'Back'}
+    <form ref={formRef} className="focus-layout wizard" onSubmit={submit}>
+      <header className="focus-header">
+        <span className="brand-mark">
+          <Icon name="train" size={18} />
+        </span>
+        <div className="focus-title">
+          <h1>{existing ? 'Edit booking task' : 'New booking task'}</h1>
+          <small className="muted">{existing ? `${existing.from} → ${existing.to}` : 'Five short steps'}</small>
+        </div>
+        <button type="button" className="button ghost" onClick={cancel}>
+          Cancel
         </button>
+      </header>
+
+      <div className="wizard-body">
+        <nav className="wizard-rail" aria-label="Steps">
+          <ol>
+            {STEPS.map(({ label, hint }, index) => {
+              const state = index === step ? 'current' : index <= furthest ? 'visited' : 'upcoming'
+              return (
+                <li key={label} className={state}>
+                  <button
+                    type="button"
+                    disabled={index > furthest}
+                    aria-current={index === step ? 'step' : undefined}
+                    onClick={() => goTo(index)}
+                  >
+                    <span className="step-number">
+                      {state === 'visited' ? <Icon name="check" size={14} /> : index + 1}
+                    </span>
+                    <span className="list-text">
+                      <strong>{label}</strong>
+                      <small>{index <= furthest ? summaries[index] : hint}</small>
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ol>
+          {form.date && (
+            <div className="rail-note">
+              <Icon name="clock" size={16} />
+              <span>
+                Booking opens
+                <strong>{formatWindow(bookingOpensAt(form.date, form.travelClass, form.quota))}</strong>
+              </span>
+            </div>
+          )}
+        </nav>
+
+        <div className="wizard-content">
+          <div className="step-heading">
+            <small className="muted">
+              Step {step + 1} of {STEPS.length}
+            </small>
+            <h2>{current.title}</h2>
+            <p className="muted">{current.description}</p>
+          </div>
+
+          {step === 0 && <JourneyStep form={form} update={update} isNew={!existing} />}
+          {step === 1 && (
+            <PassengersStep form={form} update={update} passengers={passengers} onSavePassenger={onSavePassenger} />
+          )}
+          {step === 2 && <PreferencesStep form={form} update={update} />}
+          {step === 3 && <PaymentStep form={form} update={update} />}
+          {step === 4 && <ReviewStep form={form} passengers={passengers} goTo={goTo} />}
+        </div>
+      </div>
+
+      <footer className="focus-footer">
+        <span className="muted footer-hint">
+          <Keys keys={[MOD_KEY, 'Enter']} /> {last ? 'to save' : 'to continue'}
+        </span>
+        {step > 0 && (
+          <button type="button" className="button secondary" onClick={back}>
+            Back
+          </button>
+        )}
         <button type="submit" className="button" disabled={!canContinue}>
           {last ? (existing ? 'Save changes' : 'Create task') : 'Continue'}
+          {!last && <Icon name="arrow" size={16} />}
         </button>
-      </div>
+      </footer>
     </form>
   )
 }
@@ -180,38 +297,50 @@ function JourneyStep({ form, update, isNew }: StepProps & { isNew: boolean }) {
 
   return (
     <>
-      <section className="card stack">
+      <Panel title="Route and date">
         <div className="route-inputs">
           <label className="field">
             <span>From</span>
-            <input required placeholder="e.g. NDLS" value={form.from} onChange={(event) => update({ from: event.target.value })} />
+            <input
+              required
+              autoFocus
+              placeholder="e.g. NDLS"
+              value={form.from}
+              onChange={(event) => update({ from: event.target.value })}
+            />
           </label>
           <button
             type="button"
             className="icon-button swap-button"
             aria-label="Swap stations"
+            title="Swap stations"
             onClick={() => update({ from: form.to, to: form.from })}
           >
-            <Icon name="swap" />
+            <Icon name="swap" size={18} />
           </button>
           <label className="field">
             <span>To</span>
-            <input required placeholder="e.g. MMCT" value={form.to} onChange={(event) => update({ to: event.target.value })} />
+            <input
+              required
+              placeholder="e.g. MMCT"
+              value={form.to}
+              onChange={(event) => update({ to: event.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Departure date from the train's origin</span>
+            <input
+              required
+              type="date"
+              min={isNew ? todayIso() : undefined}
+              value={form.date}
+              onChange={(event) => update({ date: event.target.value })}
+            />
           </label>
         </div>
-        <label className="field">
-          <span>Departure date from the train's origin</span>
-          <input
-            required
-            type="date"
-            min={isNew ? todayIso() : undefined}
-            value={form.date}
-            onChange={(event) => update({ date: event.target.value })}
-          />
-        </label>
-      </section>
+      </Panel>
 
-      <section className="card stack">
+      <Panel title="Quota and class">
         <div className="field">
           <span>Quota</span>
           <Segmented
@@ -231,47 +360,43 @@ function JourneyStep({ form, update, isNew }: StepProps & { isNew: boolean }) {
             describe={(option) => CLASS_NAMES[option]}
           />
         </div>
-      </section>
+      </Panel>
 
-      <section className="card stack">
-        <label className="field">
-          <span>Train number</span>
-          <input
-            required
-            inputMode="numeric"
-            pattern="\d{5}"
-            title="A 5-digit train number"
-            placeholder="e.g. 12952"
-            value={form.trainNumber}
-            onChange={(event) => update({ trainNumber: event.target.value.trim() })}
-          />
-          {trainName && <small>{trainName}</small>}
-        </label>
-        <label className="field">
-          <span>
-            Backup train number <Optional />
-          </span>
-          <input
-            inputMode="numeric"
-            pattern="\d{5}"
-            title="A 5-digit train number"
-            value={form.backupTrainNumber}
-            onChange={(event) => update({ backupTrainNumber: event.target.value.trim() })}
-          />
-        </label>
-        <label className="field">
-          <span>
-            Boarding station <Optional />
-          </span>
-          <input value={form.boardingStation} onChange={(event) => update({ boardingStation: event.target.value })} />
-        </label>
-      </section>
-
-      {form.date && (
-        <Notice icon="clock">
-          Booking opens <strong>{formatWindow(bookingOpensAt(form.date, form.travelClass, form.quota))}</strong>
-        </Notice>
-      )}
+      <Panel title="Train">
+        <div className="form-grid three">
+          <label className="field">
+            <span>Train number</span>
+            <input
+              required
+              inputMode="numeric"
+              pattern="\d{5}"
+              title="A 5-digit train number"
+              placeholder="e.g. 12952"
+              value={form.trainNumber}
+              onChange={(event) => update({ trainNumber: event.target.value.trim() })}
+            />
+            {trainName && <small>{trainName}</small>}
+          </label>
+          <label className="field">
+            <span>
+              Backup train <Optional />
+            </span>
+            <input
+              inputMode="numeric"
+              pattern="\d{5}"
+              title="A 5-digit train number"
+              value={form.backupTrainNumber}
+              onChange={(event) => update({ backupTrainNumber: event.target.value.trim() })}
+            />
+          </label>
+          <label className="field">
+            <span>
+              Boarding station <Optional />
+            </span>
+            <input value={form.boardingStation} onChange={(event) => update({ boardingStation: event.target.value })} />
+          </label>
+        </div>
+      </Panel>
     </>
   )
 }
@@ -297,48 +422,52 @@ function PassengersStep({
 
   return (
     <>
-      <div className="step-intro">
-        <h2>Who's travelling?</h2>
-        <small className="muted">
-          {selected.length} of {limit} selected · {form.quota} allows {limit} per ticket
-        </small>
+      <div className="picker-status">
+        <strong>
+          {selected.length} of {limit} selected
+        </strong>
+        <span className="muted">
+          {form.quota} allows {limit} passengers per ticket
+        </span>
       </div>
 
-      {passengers.length === 0 ? (
-        <Notice icon="users">Your master list is empty. Add the first passenger to continue.</Notice>
-      ) : (
-        <ul className="list">
-          {passengers.map((passenger) => {
-            const isSelected = selected.includes(passenger.id)
-            return (
-              <li key={passenger.id}>
-                <label className={`list-row selectable${isSelected ? ' selected' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    disabled={!isSelected && selected.length >= limit}
-                    onChange={() => toggle(passenger.id)}
-                  />
-                  <Avatar id={passenger.id} name={passenger.name} />
-                  <span className="list-text">
-                    <strong>{passenger.name}</strong>
-                    <small>{describePassenger(passenger)}</small>
-                  </span>
-                  <span className="check-box">
-                    <Icon name="check" size={14} />
-                  </span>
-                </label>
-              </li>
-            )
-          })}
-        </ul>
-      )}
+      <div className="pick-grid">
+        {passengers.map((passenger) => {
+          const isSelected = selected.includes(passenger.id)
+          return (
+            <label key={passenger.id} className={`pick-card${isSelected ? ' selected' : ''}`}>
+              <input
+                type="checkbox"
+                checked={isSelected}
+                disabled={!isSelected && selected.length >= limit}
+                onChange={() => toggle(passenger.id)}
+              />
+              <Avatar id={passenger.id} name={passenger.name} />
+              <span className="list-text">
+                <strong>{passenger.name}</strong>
+                <small>{describePassenger(passenger)}</small>
+              </span>
+              <span className="check-box">
+                <Icon name="check" size={14} />
+              </span>
+            </label>
+          )
+        })}
+        <button type="button" className="pick-card add" onClick={() => setAdding(true)}>
+          <span className="option-icon">
+            <Icon name="plus" size={18} />
+          </span>
+          <span className="list-text">
+            <strong>Add passenger</strong>
+            <small>Saved to your master list too</small>
+          </span>
+        </button>
+      </div>
 
-      <button type="button" className="button secondary" onClick={() => setAdding(true)}>
-        <Icon name="plus" />
-        Add new passenger
-      </button>
-      <PassengerSheet open={adding} onClose={() => setAdding(false)} onSave={addPassenger} />
+      {passengers.length === 0 && (
+        <Notice icon="users">Your master list is empty. Add the first passenger to continue.</Notice>
+      )}
+      <PassengerDialog open={adding} onClose={() => setAdding(false)} onSave={addPassenger} />
     </>
   )
 }
@@ -349,32 +478,33 @@ function PreferencesStep({ form, update }: StepProps) {
 
   return (
     <>
-      <section className="card switch-list">
-        <Switch
-          label="Auto-upgrade"
-          description="Accept a higher class at no extra fare if it's offered"
-          checked={form.preferences.autoUpgrade}
-          onChange={(autoUpgrade) => setPreference({ autoUpgrade })}
-        />
-        <Switch
-          label="Confirmed berths only"
-          description="Book only if every passenger gets a confirmed berth"
-          checked={form.preferences.confirmedBerthsOnly}
-          onChange={(confirmedBerthsOnly) => setPreference({ confirmedBerthsOnly })}
-        />
-        <Switch
-          label="Travel insurance"
-          description="Opt in to travel insurance for each passenger"
-          checked={form.preferences.travelInsurance}
-          onChange={(travelInsurance) => setPreference({ travelInsurance })}
-        />
-      </section>
-      <section className="card stack">
-        <label className="field">
+      <Panel title="On the booking form">
+        <div className="switch-list">
+          <Switch
+            label="Auto-upgrade"
+            description="Accept a higher class at no extra fare if it's offered"
+            checked={form.preferences.autoUpgrade}
+            onChange={(autoUpgrade) => setPreference({ autoUpgrade })}
+          />
+          <Switch
+            label="Confirmed berths only"
+            description="Book only if every passenger gets a confirmed berth"
+            checked={form.preferences.confirmedBerthsOnly}
+            onChange={(confirmedBerthsOnly) => setPreference({ confirmedBerthsOnly })}
+          />
+          <Switch
+            label="Travel insurance"
+            description="Opt in to travel insurance for each passenger"
+            checked={form.preferences.travelInsurance}
+            onChange={(travelInsurance) => setPreference({ travelInsurance })}
+          />
+        </div>
+      </Panel>
+      <Panel title="Ticket delivery">
+        <label className="field narrow">
           <span>Mobile number for the ticket</span>
           <input
             type="tel"
-            inputMode="tel"
             pattern="[6-9]\d{9}"
             title="A 10-digit Indian mobile number"
             placeholder="10-digit mobile number"
@@ -382,8 +512,10 @@ function PreferencesStep({ form, update }: StepProps) {
             onChange={(event) => setPreference({ mobile: event.target.value.trim() })}
           />
         </label>
-      </section>
-      <Notice>These are reminders of what to choose on the official site. RailBook doesn't submit them anywhere.</Notice>
+      </Panel>
+      <Notice>
+        These are reminders of what to choose on the official site. RailBook doesn't submit them anywhere.
+      </Notice>
     </>
   )
 }
@@ -391,11 +523,7 @@ function PreferencesStep({ form, update }: StepProps) {
 function PaymentStep({ form, update }: StepProps) {
   return (
     <>
-      <div className="step-intro">
-        <h2>How will you pay?</h2>
-        <small className="muted">RailBook reminds you which method to pick when it's time.</small>
-      </div>
-      <div className="option-list" role="radiogroup" aria-label="Payment method">
+      <div className="option-grid" role="radiogroup" aria-label="Payment method">
         {PAYMENT_METHODS.map((method) => {
           const { icon, detail } = PAYMENT_DETAILS[method]
           const isSelected = form.paymentMethod === method
@@ -408,7 +536,7 @@ function PaymentStep({ form, update }: StepProps) {
                 onChange={() => update({ paymentMethod: method })}
               />
               <span className="option-icon">
-                <Icon name={icon} />
+                <Icon name={icon} size={18} />
               </span>
               <span className="list-text">
                 <strong>{method}</strong>
@@ -420,8 +548,8 @@ function PaymentStep({ form, update }: StepProps) {
         })}
       </div>
       <Notice icon="lock">
-        RailBook only remembers which method you prefer. Card numbers, CVV and UPI PIN are entered on the official
-        page, never here.
+        RailBook only remembers which method you prefer. Card numbers, CVV and UPI PIN are entered on the official page,
+        never here.
       </Notice>
     </>
   )
@@ -429,15 +557,16 @@ function PaymentStep({ form, update }: StepProps) {
 
 function ReviewSection({ title, onEdit, children }: { title: string; onEdit: () => void; children: ReactNode }) {
   return (
-    <section className="card">
-      <div className="section-head">
-        <h2>{title}</h2>
+    <Panel
+      title={title}
+      actions={
         <button type="button" className="text-button" onClick={onEdit}>
           Edit
         </button>
-      </div>
+      }
+    >
       {children}
-    </section>
+    </Panel>
   )
 }
 
@@ -460,7 +589,7 @@ function ReviewStep({
   ].filter((label) => label !== false)
 
   return (
-    <>
+    <div className="review-grid">
       <ReviewSection title="Journey" onEdit={() => goTo(0)}>
         <RouteLine from={form.from} to={form.to} />
         <Facts
@@ -474,11 +603,11 @@ function ReviewStep({
           ]}
         />
       </ReviewSection>
-      <ReviewSection title={`Passengers (${chosen.length})`} onEdit={() => goTo(1)}>
+      <ReviewSection title={`Passengers · ${chosen.length}`} onEdit={() => goTo(1)}>
         <ul className="mini-list">
           {chosen.map((passenger) => (
             <li key={passenger.id}>
-              <Avatar id={passenger.id} name={passenger.name} />
+              <Avatar id={passenger.id} name={passenger.name} size={28} />
               <span className="list-text">
                 <strong>{passenger.name}</strong>
                 <small>{describePassenger(passenger)}</small>
@@ -489,14 +618,22 @@ function ReviewStep({
       </ReviewSection>
       <ReviewSection title="Preferences" onEdit={() => goTo(2)}>
         <div className="pills">
-          {preferences.length === 0 ? <span className="pill">No extras</span> : preferences.map((label) => <span key={label} className="pill">{label}</span>)}
+          {preferences.length === 0 ? (
+            <span className="pill">No extras</span>
+          ) : (
+            preferences.map((label) => (
+              <span key={label} className="pill">
+                {label}
+              </span>
+            ))
+          )}
           {mobile && <span className="pill">Ticket to {mobile}</span>}
         </div>
       </ReviewSection>
       <ReviewSection title="Payment" onEdit={() => goTo(3)}>
         <div className="card-row">
           <span className="option-icon">
-            <Icon name={PAYMENT_DETAILS[form.paymentMethod].icon} />
+            <Icon name={PAYMENT_DETAILS[form.paymentMethod].icon} size={18} />
           </span>
           <span className="list-text">
             <strong>{form.paymentMethod}</strong>
@@ -504,9 +641,6 @@ function ReviewStep({
           </span>
         </div>
       </ReviewSection>
-      <Notice icon="clock">
-        Booking opens <strong>{formatWindow(bookingOpensAt(form.date, form.travelClass, form.quota))}</strong>
-      </Notice>
-    </>
+    </div>
   )
 }

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Journey, Passenger } from '../../core/types'
 import { copyText } from '../../platform/clipboard'
 import { Icon } from '../../ui/Icon'
-import { SectionHead } from '../../ui/layout'
+import { Panel } from '../../ui/layout'
 
 export function CopyRow({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false)
@@ -14,7 +14,12 @@ export function CopyRow({ label, value }: { label: string; value: string }) {
   }
 
   return (
-    <button type="button" className={`copy-row${copied ? ' copied' : ''}`} onClick={copy}>
+    <button
+      type="button"
+      className={`copy-row${copied ? ' copied' : ''}`}
+      onClick={copy}
+      title={`Copy ${label.toLowerCase()}`}
+    >
       <small>{label}</small>
       <span>{value}</span>
       <Icon name={copied ? 'check' : 'copy'} size={16} />
@@ -36,7 +41,10 @@ export function JourneyCopyRows({ journey }: { journey: Journey }) {
 
 export function PassengerCopyRows({ passengers }: { passengers: Passenger[] }) {
   return passengers.map((passenger, index) => {
-    const details = [passenger.gender, passenger.berthPreference === 'None' ? 'Any berth' : `${passenger.berthPreference} berth`]
+    const details = [
+      passenger.gender,
+      passenger.berthPreference === 'None' ? 'Any berth' : `${passenger.berthPreference} berth`,
+    ]
     if (passenger.foodChoice && passenger.foodChoice !== 'No food') details.push(passenger.foodChoice)
 
     return (
@@ -63,12 +71,13 @@ export function CopyPanel({
   const mobile = journey.preferences?.mobile
 
   return (
-    <section className="card">
-      <SectionHead title="Copy panel" action={<small className="muted">Click to copy</small>} />
-      {username && <CopyRow label="IRCTC username" value={username} />}
-      <JourneyCopyRows journey={journey} />
-      <PassengerCopyRows passengers={passengers} />
-      {mobile && <CopyRow label="Mobile" value={mobile} />}
-    </section>
+    <Panel title="Copy panel" description="Click a value to copy it, then paste it on the official site">
+      <div className="copy-list">
+        {username && <CopyRow label="IRCTC username" value={username} />}
+        <JourneyCopyRows journey={journey} />
+        <PassengerCopyRows passengers={passengers} />
+        {mobile && <CopyRow label="Mobile" value={mobile} />}
+      </div>
+    </Panel>
   )
 }

@@ -1,33 +1,77 @@
-import { useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
-import { formatDuration } from '../../core/format'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useSettings } from '../../core/settings'
 import { clearAppData } from '../../core/storage'
 import type { Profile, Theme } from '../../core/types'
 import { ALERT_MINUTE_OPTIONS } from '../../platform/alerts'
-import { Segmented, ToggleChips } from '../../ui/controls'
-import { Icon } from '../../ui/Icon'
-import { Avatar, ConfirmSheet, Notice, PageHeader, SectionHead } from '../../ui/layout'
+import { getAppInfo, openDataFolder, type AppInfo } from '../../platform/appInfo'
+import { ToggleChips } from '../../ui/controls'
+import { Icon, type IconName } from '../../ui/Icon'
+import { Avatar, ConfirmDialog, Notice, PageHeader } from '../../ui/layout'
+import { useToast } from '../../ui/toast'
 
-const THEMES: Theme[] = ['system', 'light', 'dark']
-const THEME_LABELS: Record<Theme, string> = { system: 'System', light: 'Light', dark: 'Dark' }
-
-const PROFILE_FIELDS: { key: keyof Profile; label: string; type: string; inputMode?: 'tel' | 'email' }[] = [
-  { key: 'name', label: 'Your name', type: 'text' },
-  { key: 'irctcUsername', label: 'IRCTC username', type: 'text' },
-  { key: 'mobile', label: 'Mobile', type: 'tel', inputMode: 'tel' },
-  { key: 'email', label: 'Email', type: 'email', inputMode: 'email' },
+const THEMES: { theme: Theme; label: string; detail: string; icon: IconName }[] = [
+  { theme: 'system', label: 'System', detail: 'Follow the computer', icon: 'monitor' },
+  { theme: 'light', label: 'Light', detail: 'Always light', icon: 'sun' },
+  { theme: 'dark', label: 'Dark', detail: 'Always dark', icon: 'moon' },
 ]
 
-export function SettingsPage() {
+const PROFILE_FIELDS: { key: keyof Profile; label: string; type: string; hint?: string }[] = [
+  { key: 'name', label: 'Your name', type: 'text' },
+  { key: 'irctcUsername', label: 'IRCTC username', type: 'text', hint: 'Shown in the copy panel' },
+  { key: 'mobile', label: 'Mobile', type: 'tel', hint: 'Suggested for new tasks' },
+  { key: 'email', label: 'Email', type: 'email' },
+]
+
+function SettingsSection({
+  id,
+  title,
+  description,
+  children,
+}: {
+  id: string
+  title: string
+  description: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <section id={id} className="settings-section">
+      <div className="settings-intro">
+        <h2>{title}</h2>
+        <p className="muted">{description}</p>
+      </div>
+      <div className="settings-body">{children}</div>
+    </section>
+  )
+}
+
+function SettingRow({ title, description, action }: { title: string; description: ReactNode; action: ReactNode }) {
+  return (
+    <div className="setting-row">
+      <span className="list-text">
+        <strong>{title}</strong>
+        <small>{description}</small>
+      </span>
+      {action}
+    </div>
+  )
+}
+
+export function SettingsPage({ onShowShortcuts }: { onShowShortcuts: () => void }) {
   const { settings, update } = useSettings()
+  const toast = useToast()
   const [profile, setProfile] = useState(settings.profile)
   const [clearing, setClearing] = useState(false)
+  const [info, setInfo] = useState<AppInfo | null>(null)
   const changed = PROFILE_FIELDS.some(({ key }) => profile[key] !== settings.profile[key])
 
-  const saveProfile = (event: FormEvent) => {
+  useEffect(() => {
+    void getAppInfo().then(setInfo)
+  }, [])
+
+  const saveProfile = async (event: FormEvent) => {
     event.preventDefault()
-    void update({ profile: { ...profile, name: profile.name.trim(), irctcUsername: profile.irctcUsername.trim() } })
+    await update({ profile: { ...profile, name: profile.name.trim(), irctcUsername: profile.irctcUsername.trim() } })
+    toast('Profile saved')
   }
 
   const clearAll = async () => {
@@ -38,106 +82,141 @@ export function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" />
+      <PageHeader title="Settings" subtitle="Your profile, alerts, appearance and data" />
 
-      <section className="card">
-        <div className="card-row">
-          <Avatar id="profile" name={settings.profile.name || 'You'} />
-          <span className="list-text">
-            <strong>{settings.profile.name || 'Your profile'}</strong>
-            <small>
-              {settings.profile.irctcUsername
-                ? `IRCTC · ${settings.profile.irctcUsername}`
-                : 'Shown in the copy panel during a session'}
-            </small>
-          </span>
-        </div>
-        <form className="stack" onSubmit={saveProfile}>
-          {PROFILE_FIELDS.map(({ key, label, type, inputMode }) => (
-            <label key={key} className="field">
-              <span>{label}</span>
-              <input
-                type={type}
-                inputMode={inputMode}
-                autoComplete="off"
-                value={profile[key]}
-                onChange={(event) => setProfile({ ...profile, [key]: event.target.value })}
-              />
-            </label>
-          ))}
-          <button type="submit" className="button" disabled={!changed}>
-            {changed ? 'Save profile' : 'Profile saved'}
-          </button>
-        </form>
-        <Notice icon="lock">
-          RailBook never asks for your IRCTC password. These details stay on this computer in RailBook's data folder,
-          which isn't encrypted.
-        </Notice>
-      </section>
+      <div className="settings-sections">
+        <SettingsSection
+          id="profile"
+          title="Profile"
+          description="Used to fill the copy panel and new tasks. RailBook never asks for your IRCTC password."
+        >
+          <div className="profile-head">
+            <Avatar id="profile" name={profile.name || 'You'} size={44} />
+            <span className="list-text">
+              <strong>{settings.profile.name || 'Your profile'}</strong>
+              <small>
+                {settings.profile.irctcUsername ? `IRCTC · ${settings.profile.irctcUsername}` : 'No IRCTC username yet'}
+              </small>
+            </span>
+          </div>
+          <form className="form-grid two" onSubmit={saveProfile}>
+            {PROFILE_FIELDS.map(({ key, label, type, hint }) => (
+              <label key={key} className="field">
+                <span>{label}</span>
+                <input
+                  type={type}
+                  autoComplete="off"
+                  value={profile[key]}
+                  onChange={(event) => setProfile({ ...profile, [key]: event.target.value })}
+                />
+                {hint && <small className="field-hint">{hint}</small>}
+              </label>
+            ))}
+            <div className="form-actions span-2">
+              <button type="submit" className="button" disabled={!changed}>
+                {changed ? 'Save profile' : 'Profile saved'}
+              </button>
+            </div>
+          </form>
+        </SettingsSection>
 
-      <section className="card stack">
-        <SectionHead title="Window alerts" />
-        <small className="muted">Remind me this long before a booking window opens</small>
-        <ToggleChips
-          label="Alert lead times"
-          options={ALERT_MINUTE_OPTIONS}
-          values={settings.alertMinutes}
-          onChange={(minutes) => update({ alertMinutes: minutes.sort((a, b) => b - a) })}
-          format={(minutes) => `${minutes} min`}
-        />
-        <small className="muted">Applies the next time you set alerts on a task.</small>
-      </section>
+        <SettingsSection
+          id="alerts"
+          title="Window alerts"
+          description="Desktop notifications before a booking window opens. They appear while RailBook is open."
+        >
+          <div className="field">
+            <span>Remind me this long before</span>
+            <ToggleChips
+              label="Alert lead times"
+              options={ALERT_MINUTE_OPTIONS}
+              values={settings.alertMinutes}
+              onChange={(minutes) => update({ alertMinutes: minutes.sort((a, b) => b - a) })}
+              format={(minutes) => `${minutes} min`}
+            />
+          </div>
+          <small className="muted">Applies the next time you set alerts on a task.</small>
+        </SettingsSection>
 
-      <section className="card stack">
-        <SectionHead title="Appearance" />
-        <Segmented
-          label="Theme"
-          options={THEMES}
-          value={settings.theme}
-          onChange={(theme) => update({ theme })}
-          format={(theme) => THEME_LABELS[theme]}
-        />
-      </section>
+        <SettingsSection id="appearance" title="Appearance" description="Choose how RailBook looks.">
+          <div className="theme-options" role="radiogroup" aria-label="Theme">
+            {THEMES.map(({ theme, label, detail, icon }) => (
+              <label key={theme} className={`option-card${settings.theme === theme ? ' selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="theme"
+                  checked={settings.theme === theme}
+                  onChange={() => update({ theme })}
+                />
+                <span className={`theme-swatch ${theme}`}>
+                  <Icon name={icon} size={18} />
+                </span>
+                <span className="list-text">
+                  <strong>{label}</strong>
+                  <small>{detail}</small>
+                </span>
+              </label>
+            ))}
+          </div>
+        </SettingsSection>
 
-      <nav className="card menu" aria-label="More">
-        <Link to="/practice" className="menu-row">
-          <Icon name="timer" />
-          <span className="list-text">
-            <strong>Practice run</strong>
-            <small>
-              {settings.practiceBestSeconds === null
-                ? 'Rehearse the booking steps against the clock'
-                : `Best time ${formatDuration(settings.practiceBestSeconds)}`}
-            </small>
-          </span>
-          <Icon name="chevron" />
-        </Link>
-        <button type="button" className="menu-row" onClick={() => update({ onboarded: false })}>
-          <Icon name="sparkle" />
-          <span className="list-text">
-            <strong>Show the welcome tour</strong>
-            <small>See what RailBook does again</small>
-          </span>
-          <Icon name="chevron" />
-        </button>
-        <button type="button" className="menu-row danger-text" onClick={() => setClearing(true)}>
-          <Icon name="trash" />
-          <span className="list-text">
-            <strong>Clear all data</strong>
-            <small>Tasks, passengers, PNRs and settings</small>
-          </span>
-        </button>
-      </nav>
+        <SettingsSection
+          id="data"
+          title="Your data"
+          description="Tasks, passengers, PNRs and settings stay on this computer, in a file that isn't encrypted."
+        >
+          <SettingRow
+            title="Data folder"
+            description={<span className="mono">{info?.dataDirectory ?? '…'}</span>}
+            action={
+              <button type="button" className="button secondary small" onClick={() => void openDataFolder()}>
+                <Icon name="folder" size={16} />
+                Show folder
+              </button>
+            }
+          />
+          <SettingRow
+            title="Keyboard shortcuts"
+            description="Every shortcut RailBook understands"
+            action={
+              <button type="button" className="button secondary small" onClick={onShowShortcuts}>
+                <Icon name="keyboard" size={16} />
+                Show
+              </button>
+            }
+          />
+          <SettingRow
+            title="Welcome tour"
+            description="See what RailBook does again"
+            action={
+              <button type="button" className="button secondary small" onClick={() => update({ onboarded: false })}>
+                <Icon name="sparkle" size={16} />
+                Show
+              </button>
+            }
+          />
+          <SettingRow
+            title="Clear all data"
+            description="Deletes every task, passenger, PNR and setting"
+            action={
+              <button type="button" className="button danger small" onClick={() => setClearing(true)}>
+                <Icon name="trash" size={16} />
+                Clear…
+              </button>
+            }
+          />
+        </SettingsSection>
 
-      <section className="about">
-        <h2>About RailBook</h2>
-        <p className="muted">
-          RailBook helps you prepare and book faster by hand. It doesn't automate or scrape IRCTC: sign-in, CAPTCHA,
-          OTP, payment and submission all happen on the official site.
-        </p>
-      </section>
+        <SettingsSection id="about" title="About RailBook" description={info ? `Version ${info.version}` : ''}>
+          <Notice icon="shield">
+            RailBook helps you prepare and book faster by hand. It doesn't automate or scrape IRCTC: sign-in, CAPTCHA,
+            OTP, payment and submission all happen on the official site.
+          </Notice>
+          {info && <small className="muted mono">Running in {info.browser}</small>}
+        </SettingsSection>
+      </div>
 
-      <ConfirmSheet
+      <ConfirmDialog
         open={clearing}
         title="Clear all data?"
         body="This deletes every booking task, passenger, PNR and setting on this computer. It can't be undone."

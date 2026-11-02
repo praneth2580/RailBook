@@ -1,7 +1,7 @@
 import { launchChrome, waitForChrome, type Chrome } from './chrome'
 
 const WINDOW_FLAGS = [
-  '--window-size=600,900',
+  '--window-size=1280,840',
   // Linux: a taskbar entry of its own instead of being grouped with the person's browser.
   '--class=RailBook',
   // Window alerts run on timers, which Chrome otherwise slows down for windows in the background.

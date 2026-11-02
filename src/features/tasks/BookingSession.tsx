@@ -5,7 +5,8 @@ import type { Journey, Passenger } from '../../core/types'
 import { useNow } from '../../core/useNow'
 import { openOfficialPage } from '../../platform/officialPages'
 import { Icon } from '../../ui/Icon'
-import { ConfirmSheet, Notice, Sheet } from '../../ui/layout'
+import { ConfirmDialog, Dialog, Keys, Notice, Panel, useDocumentTitle } from '../../ui/layout'
+import { MOD_KEY, useShortcut } from '../../ui/shortcuts'
 import { extractPnr } from '../pnr/extractPnr'
 import { CopyRow, JourneyCopyRows, PassengerCopyRows } from '../tatkal/CopyPanel'
 import { ReadinessList } from '../tatkal/ReadinessCard'
@@ -65,9 +66,12 @@ export function BookingSession({
   const step = progress ? steps[progress.stepIndex] : undefined
   const opensAt = journeyOpensAt(journey)
   const windowOpen = now >= opensAt.getTime()
-  const ready = readinessChecks(journey).every(({ done }) => done)
+  const openChecks = readinessChecks(journey).filter(({ done }) => !done).length
+  const ready = openChecks === 0
+  useDocumentTitle(practice ? 'Practice run' : 'Booking session')
 
-  const addLog = (text: string, tone?: LogEntry['tone']) => setLog((entries) => [...entries, { at: Date.now(), text, tone }])
+  const addLog = (text: string, tone?: LogEntry['tone']) =>
+    setLog((entries) => [...entries, { at: Date.now(), text, tone }])
   const elapsedSeconds = () => (progress ? Math.round((Date.now() - progress.startedAt) / 1000) : 0)
 
   const start = () => {
@@ -120,124 +124,155 @@ export function BookingSession({
   }
 
   return (
-    <div className="session">
-      <header className="session-header">
+    <div className="focus-layout session">
+      <header className="focus-header">
         <button
           type="button"
           className="icon-button"
           aria-label="Leave session"
+          title="Leave session"
           onClick={() => (progress && !result ? setLeaving(true) : onExit())}
         >
-          <Icon name="close" />
+          <Icon name="close" size={18} />
         </button>
-        <div className="page-title">
+        <div className="focus-title">
           <h1>{practice ? 'Practice run' : 'Booking session'}</h1>
-          <small>
-            {journey.from} to {journey.to} · {journey.trainNumber} · {journey.travelClass}
+          <small className="muted">
+            {journey.from} → {journey.to} · {journey.trainNumber} · {journey.travelClass}
+            {practice && ' · sample details'}
           </small>
         </div>
+        {!practice && (
+          <span className={`window-pill${windowOpen ? ' open' : ''}`}>
+            <span className="live-dot" />
+            {windowOpen ? 'Booking window is open' : `Opens in ${formatCountdown(opensAt.getTime() - now)}`}
+          </span>
+        )}
         <span className={`session-timer${progress && !result ? ' running' : ''}`} aria-label="Elapsed time">
           <Icon name="timer" size={16} />
           {formatElapsed(progress ? (result ? result.seconds * 1000 : now - progress.startedAt) : 0)}
         </span>
       </header>
 
-      {!practice && (
-        <div className={`window-strip${windowOpen ? ' open' : ''}`}>
-          <span className="live-dot" />
-          {windowOpen ? 'Booking window is open' : `Window opens in ${formatCountdown(opensAt.getTime() - now)}`}
-        </div>
-      )}
-
-      {result ? (
-        <ResultPanel
-          result={result}
-          practice={practice}
-          previousBest={previousBest}
-          onAgain={start}
-          onExit={onExit}
-        />
-      ) : (
-        <>
-          <ol className="pipeline">
-            {steps.map((item, index) => {
-              const state = !progress
-                ? 'pending'
-                : index < progress.stepIndex
-                  ? 'done'
-                  : index === progress.stepIndex
-                    ? 'current'
-                    : 'pending'
-              return (
-                <li key={item.id} className={`pipeline-step ${state}`} aria-current={state === 'current' ? 'step' : undefined}>
-                  <span className="pipeline-marker">{state === 'done' ? <Icon name="check" size={14} /> : index + 1}</span>
-                  <div className="pipeline-body">
-                    <div className="pipeline-title">
-                      <strong>{item.label}</strong>
-                      <span className={`actor ${item.actor}`}>{item.actor === 'app' ? 'Auto' : 'You'}</span>
-                      {state === 'done' && <small>{formatDuration(progress?.durations[index] ?? 0)}</small>}
-                    </div>
-                    {state === 'current' ? (
-                      <StepPanel
-                        step={item}
-                        journey={journey}
-                        passengers={passengers}
-                        practice={practice}
-                        username={settings.profile.irctcUsername}
-                        countdown={formatCountdown(opensAt.getTime() - now)}
-                        onDone={completeStep}
-                        onBooked={finishBooked}
-                        onJourneyChange={onJourneyChange}
-                      />
-                    ) : (
-                      <small className="muted">{item.hint}</small>
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ol>
-
-          {progress ? (
-            !practice && (
-              <button type="button" className="button ghost danger-text" onClick={() => setGivingUp(true)}>
-                Couldn't book
-              </button>
-            )
+      <div className="session-body">
+        <div className="session-main">
+          {result ? (
+            <ResultPanel
+              result={result}
+              practice={practice}
+              previousBest={previousBest}
+              onAgain={start}
+              onExit={onExit}
+            />
           ) : (
-            <div className="session-start">
-              <button type="button" className="button large" onClick={start}>
-                <Icon name="play" />
-                {practice ? 'Start practice' : 'Start session'}
-              </button>
-              <small className="muted center">
-                {practice
-                  ? 'A rehearsal with sample details. Nothing here connects to IRCTC.'
-                  : 'Start a few minutes early so you can sign in before the window opens.'}
-              </small>
-            </div>
+            <>
+              {!progress && (
+                <section className="start-panel">
+                  <div className="list-text">
+                    <strong>{practice ? 'Ready to rehearse?' : 'Ready when you are'}</strong>
+                    <small>
+                      {practice
+                        ? 'A rehearsal with sample details, timed from start to finish. Nothing here connects to IRCTC.'
+                        : ready
+                          ? 'Every readiness check is done. Start a few minutes early so you can sign in before the window opens.'
+                          : `${openChecks} readiness ${openChecks === 1 ? 'check is' : 'checks are'} still open. The first step goes through them.`}
+                    </small>
+                  </div>
+                  <button type="button" className="button large" autoFocus onClick={start}>
+                    <Icon name="play" size={18} />
+                    {practice ? 'Start practice' : 'Start session'}
+                  </button>
+                </section>
+              )}
+              <ol className="pipeline">
+                {steps.map((item, index) => {
+                  const state = !progress
+                    ? 'pending'
+                    : index < progress.stepIndex
+                      ? 'done'
+                      : index === progress.stepIndex
+                        ? 'current'
+                        : 'pending'
+                  return (
+                    <li
+                      key={item.id}
+                      className={`pipeline-step ${state}`}
+                      aria-current={state === 'current' ? 'step' : undefined}
+                    >
+                      <span className="pipeline-marker">
+                        {state === 'done' ? <Icon name="check" size={14} /> : index + 1}
+                      </span>
+                      <div className="pipeline-body">
+                        <div className="pipeline-title">
+                          <strong>{item.label}</strong>
+                          <span className={`actor ${item.actor}`}>{item.actor === 'app' ? 'Auto' : 'You'}</span>
+                          {state === 'done' && <small>{formatDuration(progress?.durations[index] ?? 0)}</small>}
+                        </div>
+                        {state === 'current' ? (
+                          <StepPanel
+                            step={item}
+                            journey={journey}
+                            passengers={passengers}
+                            practice={practice}
+                            username={settings.profile.irctcUsername}
+                            countdown={formatCountdown(opensAt.getTime() - now)}
+                            onDone={completeStep}
+                            onBooked={finishBooked}
+                            onJourneyChange={onJourneyChange}
+                          />
+                        ) : (
+                          <small className="muted">{item.hint}</small>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+
+              {progress && !practice && (
+                <div className="session-giveup">
+                  <button type="button" className="button ghost danger-text" onClick={() => setGivingUp(true)}>
+                    Couldn't book? Record what happened
+                  </button>
+                </div>
+              )}
+            </>
           )}
-        </>
-      )}
-
-      <section className="console" aria-label="Activity" aria-live="polite">
-        <div className="console-head">
-          <Icon name="terminal" size={16} />
-          Activity
         </div>
-        {log.length === 0 ? (
-          <p className="console-idle">Waiting to start…</p>
-        ) : (
-          log.map((entry, index) => (
-            <p key={index} className={entry.tone}>
-              <time>{formatClock(entry.at)}</time>
-              {entry.text}
-            </p>
-          ))
-        )}
-      </section>
 
-      <ConfirmSheet
+        <aside className="session-aside">
+          <Panel title={practice ? 'Sample booking' : 'This booking'}>
+            <Facts
+              items={[
+                ['Date', formatJourneyDate(journey.date)],
+                ['Train', journey.trainNumber],
+                ['Class', journey.travelClass],
+                ['Quota', journey.quota ?? 'Tatkal'],
+                ['Passengers', String(passengers.length)],
+                ['Payment', journey.paymentMethod ?? 'Not chosen'],
+              ]}
+            />
+          </Panel>
+          <section className="console" aria-label="Activity" aria-live="polite">
+            <div className="console-head">
+              <Icon name="terminal" size={16} />
+              Activity
+            </div>
+            {log.length === 0 ? (
+              <p className="console-idle">Waiting to start…</p>
+            ) : (
+              log.map((entry, index) => (
+                <p key={index} className={entry.tone}>
+                  <time>{formatClock(entry.at)}</time>
+                  {entry.text}
+                </p>
+              ))
+            )}
+          </section>
+        </aside>
+      </div>
+
+      <ConfirmDialog
         open={leaving}
         title="Leave this session?"
         body="Your progress here will be lost. Anything you've done on the official site stays as it is."
@@ -245,8 +280,12 @@ export function BookingSession({
         onConfirm={onExit}
         onClose={() => setLeaving(false)}
       />
-      <Sheet open={givingUp} title="What happened?" onClose={() => setGivingUp(false)}>
-        <p className="muted">RailBook records the reason on the task. You can reopen it later.</p>
+      <Dialog
+        open={givingUp}
+        title="What happened?"
+        description="RailBook records the reason on the task. You can reopen it later."
+        onClose={() => setGivingUp(false)}
+      >
         <div className="reason-list">
           {NOT_BOOKED_REASONS.map((reason) => (
             <button key={reason} type="button" className="button secondary" onClick={() => finishNotBooked(reason)}>
@@ -254,7 +293,7 @@ export function BookingSession({
             </button>
           ))}
         </div>
-      </Sheet>
+      </Dialog>
     </div>
   )
 }
@@ -281,10 +320,21 @@ function StepPanel({
   onBooked: (pnr: string) => void
   onJourneyChange?: (journey: Journey) => void
 }) {
+  // Ctrl+Enter finishes the step, except the wait, which shouldn't be skipped by accident, and the PNR form,
+  // which handles the keys itself.
+  const shortcut =
+    step.id === 'window' || (step.id === 'pnr' && !practice)
+      ? undefined
+      : step.id === 'pnr'
+        ? () => onBooked('')
+        : onDone
+  useShortcut('Enter', () => shortcut?.(), { mod: true, enabled: shortcut !== undefined })
+
   const doneButton = (
     <button type="button" className="button" onClick={onDone}>
-      <Icon name="check" />
+      <Icon name="check" size={18} />
       {step.doneLabel}
+      <Keys keys={[MOD_KEY, 'Enter']} />
     </button>
   )
 
@@ -370,8 +420,9 @@ function StepPanel({
         <div className="step-panel">
           <small className="muted">In a real session you'd paste the booking SMS here.</small>
           <button type="button" className="button" onClick={() => onBooked('')}>
-            <Icon name="check" />
+            <Icon name="check" size={18} />
             Finish practice
+            <Keys keys={[MOD_KEY, 'Enter']} />
           </button>
         </div>
       ) : (
@@ -395,11 +446,15 @@ function PnrEntry({ label, onSave }: { label: string; onSave: (pnr: string) => v
     <form className="step-panel" onSubmit={submit}>
       <textarea
         required
+        autoFocus
         rows={3}
         aria-label="Booking SMS or PNR"
         placeholder="Paste the booking SMS or PNR"
         value={text}
         onChange={(event) => setText(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) event.currentTarget.form?.requestSubmit()
+        }}
       />
       {error && <small className="error">{error}</small>}
       <button type="submit" className="button">
@@ -432,7 +487,9 @@ function ResultPanel({
       </span>
       <h2>{practice ? 'Practice complete' : result.booked ? 'Ticket booked' : 'Not booked this time'}</h2>
       <p className="muted">
-        {result.booked ? `Finished in ${formatDuration(result.seconds)}` : `${result.reason} after ${formatDuration(result.seconds)}`}
+        {result.booked
+          ? `Finished in ${formatDuration(result.seconds)}`
+          : `${result.reason} after ${formatDuration(result.seconds)}`}
       </p>
       {newBest && <span className="status-chip success">New best time</span>}
       {practice && !newBest && previousBest !== null && (

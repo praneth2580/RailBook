@@ -1,12 +1,13 @@
 import { useNavigate } from 'react-router-dom'
 import { useSettings } from '../../core/settings'
 import { Icon, type IconName } from '../../ui/Icon'
+import { useDocumentTitle } from '../../ui/layout'
 
 const FEATURES: { icon: IconName; title: string; body: string }[] = [
   {
     icon: 'clock',
     title: 'Never miss the window',
-    body: 'Countdowns and alerts for Tatkal, Premium Tatkal and General booking.',
+    body: 'Countdowns and desktop alerts for Tatkal, Premium Tatkal and General booking.',
   },
   {
     icon: 'bolt',
@@ -28,6 +29,7 @@ const FEATURES: { icon: IconName; title: string; body: string }[] = [
 export function WelcomePage() {
   const { update } = useSettings()
   const navigate = useNavigate()
+  useDocumentTitle('Welcome')
 
   const start = async () => {
     await update({ onboarded: true })
@@ -36,30 +38,39 @@ export function WelcomePage() {
 
   return (
     <div className="welcome">
-      <div className="welcome-hero">
+      <section className="welcome-brand">
         <span className="logo">
           <Icon name="train" size={40} />
         </span>
         <h1>RailBook</h1>
         <p>Your Tatkal booking co-pilot</p>
-      </div>
-      <ul className="feature-list">
-        {FEATURES.map(({ icon, title, body }) => (
-          <li key={title}>
-            <span className="option-icon">
-              <Icon name={icon} />
-            </span>
-            <span className="list-text">
+        <small>Everything you save stays on this computer.</small>
+      </section>
+
+      <section className="welcome-content">
+        <div>
+          <h2>Have every detail ready before the window opens</h2>
+          <p className="muted">RailBook prepares you to book faster by hand. Here's what it does.</p>
+        </div>
+        <ul className="feature-grid">
+          {FEATURES.map(({ icon, title, body }) => (
+            <li key={title}>
+              <span className="option-icon">
+                <Icon name={icon} size={18} />
+              </span>
               <strong>{title}</strong>
-              <small>{body}</small>
-            </span>
-          </li>
-        ))}
-      </ul>
-      <button type="button" className="button large" onClick={start}>
-        Get started
-        <Icon name="arrow" />
-      </button>
+              <small className="muted">{body}</small>
+            </li>
+          ))}
+        </ul>
+        <div className="welcome-actions">
+          <button type="button" className="button large" autoFocus onClick={start}>
+            Get started
+            <Icon name="arrow" size={18} />
+          </button>
+          <small className="muted">or press Enter</small>
+        </div>
+      </section>
     </div>
   )
 }

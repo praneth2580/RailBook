@@ -33,6 +33,10 @@ async function setup(overrides: Partial<ServerOptions> = {}) {
     openExternal: async (url) => {
       opened.push(url)
     },
+    appInfo: { version: '1.2.3', dataDirectory: '/home/me/.config/RailBook', browser: '/usr/bin/google-chrome' },
+    openDataFolder: async () => {
+      opened.push('data folder')
+    },
     instanceSecret: 'instance-secret',
     focus: async () => {
       focused += 1
@@ -201,6 +205,18 @@ describe('startServer', () => {
     expect((await api('open', { url: 'file:///etc/passwd' })).status).toBe(400)
     expect((await api('open', { url: 'javascript:alert(1)' })).status).toBe(400)
     expect(opened).toEqual(['https://www.irctc.co.in/nget/train-search'])
+  })
+
+  it('describes the app and shows its data folder', async () => {
+    const { api, opened } = await setup()
+
+    expect(await (await api('app-info', {})).json()).toEqual({
+      version: '1.2.3',
+      dataDirectory: '/home/me/.config/RailBook',
+      browser: '/usr/bin/google-chrome',
+    })
+    await api('open-data-folder', {})
+    expect(opened).toEqual(['data folder'])
   })
 })
 

@@ -18,6 +18,9 @@ export interface ServerOptions {
   fetchPage: PageLoader
   render: PageLoader
   openExternal: (url: string) => Promise<void>
+  /** Shown in Settings. */
+  appInfo: { version: string; dataDirectory: string; browser: string }
+  openDataFolder: () => Promise<void>
   /** Lets a second launch ask this one to bring its window forward, through the instance file. */
   instanceSecret: string
   focus: () => Promise<void>
@@ -141,6 +144,11 @@ export async function startServer(options: ServerOptions): Promise<AppServer> {
     render: (body, signal) => loadPage(options.render, body, signal),
     open: async (body) => {
       await options.openExternal(webAddress(body.url).href)
+      return {}
+    },
+    'app-info': async () => options.appInfo,
+    'open-data-folder': async () => {
+      await options.openDataFolder()
       return {}
     },
   }

@@ -1,13 +1,14 @@
 import { randomBytes } from 'node:crypto'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
+import packageJson from '../package.json'
 import { findChrome } from './chrome'
 import { claimInstance, focusRunningInstance, releaseInstance } from './instance'
 import { fetchPage } from './pages'
 import { createRenderer } from './renderer'
 import { startServer } from './server'
 import { openStore } from './store'
-import { dataDirectory, openExternal } from './system'
+import { dataDirectory, openExternal, openFolder } from './system'
 import type { UiHandler } from './ui'
 import { openAppWindow, type AppWindow } from './window'
 
@@ -56,6 +57,8 @@ export async function startApp({ ui, onExit }: StartOptions) {
     fetchPage,
     render: renderer.render,
     openExternal,
+    appInfo: { version: packageJson.version, dataDirectory: directory, browser: executable },
+    openDataFolder: () => openFolder(directory),
     instanceSecret: secret,
     focus: async () => window?.focus(),
   })

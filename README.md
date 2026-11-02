@@ -40,7 +40,7 @@ Data lives in `~/.config/RailBook` on Linux, `~/Library/Application Support/Rail
 | `src/core` | Shared types, storage, settings and formatting |
 | `src/data` | Timetable and PNR data providers |
 | `src/platform` | The UI's side of the launcher: API calls, alerts, clipboard, official pages |
-| `src/ui` | Icons, layout pieces (headers, sheets, chips) and form controls |
+| `src/ui` | The app shell: sidebar, command palette, dialogs, toasts, keyboard shortcuts, icons and form controls |
 | `src/features/home` | Dashboard with the next booking window and quick actions |
 | `src/features/tasks` | Booking tasks: list, five-step wizard, detail and the guided booking session |
 | `src/features/tatkal` | Booking window rules, readiness checks, copy panel and practice runs |
@@ -50,9 +50,21 @@ Data lives in `~/.config/RailBook` on Linux, `~/Library/Application Support/Rail
 
 ## Screens
 
-A booking task holds the journey, passengers, preferences and preferred payment method. Its booking session is a step pipeline: RailBook completes its own steps (pre-flight checks, waiting for the window) and the person completes every step on the official site, clicking through as they go. The session records how long each step took and saves the PNR or the reason it wasn't booked.
+A sidebar holds the sections, a count of active tasks and passengers, and a live countdown to the next booking window. It folds to an icon rail in narrow windows. Home is a dashboard: the next window, the tasks after it, a setup checklist, stats and recent PNRs. Tasks, passengers and PNRs are searchable lists, and deleting a passenger or PNR can be undone from the message that follows.
+
+A booking task holds the journey, passengers, preferences and preferred payment method. Its booking session is a step pipeline: RailBook completes its own steps (pre-flight checks, waiting for the window) and the person completes every step on the official site, clicking through as they go. The session records how long each step took and saves the PNR or the reason it wasn't booked. Creating a task, running a session and practising fill the window without the sidebar, so a stray click can't leave them. The session still works when RailBook is snapped beside the browser.
 
 Official pages open in the person's default browser, where they're already signed in. Window alerts are desktop notifications that fire while RailBook is open.
+
+| Keys | Does |
+|---|---|
+| Ctrl+K (⌘K on a Mac) | Search tasks, passengers and actions |
+| N | New booking task |
+| 1 to 5 | Home, Booking tasks, Passengers, PNR status, Practice |
+| Ctrl+, | Settings |
+| / | Search the current list |
+| Ctrl+Enter | Continue in the task wizard, or finish the current session step |
+| ? | Show every shortcut |
 
 ## Scraping and automation
 

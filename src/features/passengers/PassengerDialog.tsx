@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import {
   BERTH_PREFERENCES,
   FOOD_CHOICES,
@@ -9,7 +9,7 @@ import {
   type Passenger,
 } from '../../core/types'
 import { ChoiceChips, Segmented } from '../../ui/controls'
-import { Sheet } from '../../ui/layout'
+import { Dialog } from '../../ui/layout'
 
 export function describePassenger({ age, gender, berthPreference, foodChoice }: Passenger) {
   const parts = [String(age), gender, berthPreference === 'None' ? 'Any berth' : `${berthPreference} berth`]
@@ -17,7 +17,7 @@ export function describePassenger({ age, gender, berthPreference, foodChoice }: 
   return parts.join(' · ')
 }
 
-export function PassengerSheet({
+export function PassengerDialog({
   open,
   passenger,
   onClose,
@@ -29,23 +29,46 @@ export function PassengerSheet({
   passenger?: Passenger
   onClose: () => void
   onSave: (passenger: Passenger) => void
-  onDelete?: (id: string) => void
+  onDelete?: (passenger: Passenger) => void
 }) {
+  const formId = useId()
+
   return (
-    <Sheet open={open} title={passenger ? 'Edit passenger' : 'Add passenger'} onClose={onClose}>
-      <PassengerForm passenger={passenger} onSave={onSave} onDelete={onDelete} />
-    </Sheet>
+    <Dialog
+      open={open}
+      title={passenger ? 'Edit passenger' : 'Add passenger'}
+      description="Enter the details exactly as they appear on the passenger's ID."
+      onClose={onClose}
+      footer={
+        <>
+          {passenger && onDelete && (
+            <button type="button" className="button ghost danger-text footer-start" onClick={() => onDelete(passenger)}>
+              Delete passenger
+            </button>
+          )}
+          <button type="button" className="button secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" form={formId} className="button">
+            {passenger ? 'Save changes' : 'Add passenger'}
+          </button>
+        </>
+      }
+    >
+      {/* Keyed so reopening for someone else starts from their details. */}
+      <PassengerForm key={passenger?.id ?? 'new'} id={formId} passenger={passenger} onSave={onSave} />
+    </Dialog>
   )
 }
 
 function PassengerForm({
+  id,
   passenger,
   onSave,
-  onDelete,
 }: {
+  id: string
   passenger?: Passenger
   onSave: (passenger: Passenger) => void
-  onDelete?: (id: string) => void
 }) {
   const [name, setName] = useState(passenger?.name ?? '')
   const [age, setAge] = useState(passenger ? String(passenger.age) : '')
@@ -55,6 +78,8 @@ function PassengerForm({
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
+    // React passes events up through portals, so keep this from also submitting a form the dialog was opened from.
+    event.stopPropagation()
     onSave({
       id: passenger?.id ?? crypto.randomUUID(),
       name: name.trim(),
@@ -66,28 +91,26 @@ function PassengerForm({
   }
 
   return (
-    <form className="stack" onSubmit={submit}>
-      <label className="field">
+    <form id={id} className="form-grid" onSubmit={submit}>
+      <label className="field span-2">
         <span>Name as on ID</span>
-        <input required autoComplete="off" value={name} onChange={(event) => setName(event.target.value)} />
+        <input
+          required
+          data-autofocus
+          autoComplete="off"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
       </label>
       <label className="field">
         <span>Age</span>
-        <input
-          required
-          type="number"
-          inputMode="numeric"
-          min="0"
-          max="125"
-          value={age}
-          onChange={(event) => setAge(event.target.value)}
-        />
+        <input required type="number" min="0" max="125" value={age} onChange={(event) => setAge(event.target.value)} />
       </label>
-      <div className="field">
+      <div className="field span-3">
         <span>Gender</span>
         <Segmented label="Gender" options={GENDERS} value={gender} onChange={setGender} />
       </div>
-      <div className="field">
+      <div className="field span-3">
         <span>Berth preference</span>
         <ChoiceChips
           label="Berth preference"
@@ -96,18 +119,10 @@ function PassengerForm({
           onChange={setBerthPreference}
         />
       </div>
-      <div className="field">
+      <div className="field span-3">
         <span>Food</span>
         <Segmented label="Food" options={FOOD_CHOICES} value={foodChoice} onChange={setFoodChoice} />
       </div>
-      <button type="submit" className="button">
-        {passenger ? 'Save changes' : 'Add passenger'}
-      </button>
-      {passenger && onDelete && (
-        <button type="button" className="button ghost danger-text" onClick={() => onDelete(passenger.id)}>
-          Delete passenger
-        </button>
-      )}
     </form>
   )
 }
