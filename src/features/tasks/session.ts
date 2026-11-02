@@ -42,7 +42,7 @@ export const SESSION_STEPS: SessionStep[] = [
   {
     id: 'passengers',
     label: 'Fill passenger details',
-    hint: 'Tap a value to copy it, then paste it',
+    hint: 'Click a value to copy it, then paste it',
     actor: 'you',
     doneLabel: 'Passengers filled',
   },

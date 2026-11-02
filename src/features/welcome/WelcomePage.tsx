@@ -11,7 +11,7 @@ const FEATURES: { icon: IconName; title: string; body: string }[] = [
   {
     icon: 'bolt',
     title: 'Fill forms in seconds',
-    body: 'Stations, trains and passenger details are one tap from your clipboard.',
+    body: 'Stations, trains and passenger details are one click from your clipboard.',
   },
   {
     icon: 'tasks',

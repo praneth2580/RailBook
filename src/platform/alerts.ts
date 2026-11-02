@@ -1,35 +1,69 @@
-import { Capacitor } from '@capacitor/core'
-import { LocalNotifications } from '@capacitor/local-notifications'
+import { createCollection } from '../core/storage'
 
 /** Lead times the person can choose from in Settings. */
 export const ALERT_MINUTE_OPTIONS = [30, 15, 10, 5, 2, 1]
 
 export interface AlertResult {
   scheduled: number
-  /** False when Android may deliver the alerts late. */
-  exact: boolean
 }
 
-// Android 14 denies exact alarms by default, even with the manifest permission.
-async function exactAlarmsAllowed() {
-  if (Capacitor.getPlatform() !== 'android') return true
-  const { exact_alarm } = await LocalNotifications.checkExactNotificationSetting()
-  return exact_alarm === 'granted'
+interface SavedAlert {
+  id: string
+  journeyId: string
+  title: string
+  at: string
+  opensAt: string
 }
 
-// Notification ids must be integers, and stable so rescheduling replaces earlier alerts.
-function alertId(journeyId: string, minutesBefore: number) {
-  let hash = minutesBefore
-  for (const character of journeyId) {
-    hash = (hash * 31 + character.charCodeAt(0)) | 0
+// Saved so alerts survive restarting RailBook. They only fire while it's open.
+const alertCollection = createCollection<SavedAlert>('windowAlerts')
+const CHECK_EVERY_MS = 60_000
+
+let timer: ReturnType<typeof setTimeout> | undefined
+let checking = Promise.resolve()
+
+async function notificationsAllowed() {
+  if (!('Notification' in window)) return false
+  if (Notification.permission === 'default') await Notification.requestPermission()
+  return Notification.permission === 'granted'
+}
+
+function show(tag: string, title: string, body: string) {
+  const notification = new Notification(title, { body, tag })
+  notification.onclick = () => window.focus()
+}
+
+async function fireDueAlerts() {
+  clearTimeout(timer)
+  const now = Date.now()
+  const pending: SavedAlert[] = []
+  for (const alert of await alertCollection.list()) {
+    if (Date.parse(alert.at) > now) {
+      pending.push(alert)
+      continue
+    }
+    // An alert is only useful before its window opens, e.g. after the computer wakes up late.
+    const minutesLeft = Math.ceil((Date.parse(alert.opensAt) - now) / 60_000)
+    if (minutesLeft > 0) show(`window:${alert.journeyId}`, alert.title, `Booking opens in ${minutesLeft} min`)
+    await alertCollection.remove(alert.id)
   }
-  return hash
+  if (pending.length === 0) return
+  // Wake at least once a minute, since timers don't count time the computer spends asleep.
+  const next = Math.min(...pending.map(({ at }) => Date.parse(at)))
+  timer = setTimeout(armSavedAlerts, Math.min(Math.max(next - now, 0), CHECK_EVERY_MS))
 }
 
-export function cancelWindowAlerts(journeyId: string) {
-  return LocalNotifications.cancel({
-    notifications: ALERT_MINUTE_OPTIONS.map((minutes) => ({ id: alertId(journeyId, minutes) })),
-  })
+/** Starts watching saved alerts. Safe to call again: checks run one at a time. */
+export function armSavedAlerts() {
+  checking = checking.then(fireDueAlerts).catch(() => undefined)
+  return checking
+}
+
+export async function cancelWindowAlerts(journeyId: string) {
+  for (const alert of await alertCollection.list()) {
+    if (alert.journeyId === journeyId) await alertCollection.remove(alert.id)
+  }
+  await armSavedAlerts()
 }
 
 /** Returns null if notification permission was refused. */
@@ -39,20 +73,28 @@ export async function scheduleWindowAlerts(
   opensAt: Date,
   minutesBefore: number[],
 ): Promise<AlertResult | null> {
-  const { display } = await LocalNotifications.requestPermissions()
-  if (display !== 'granted') return null
+  if (!(await notificationsAllowed())) return null
 
-  // Lead times may have changed since the last time, so clear every option first.
+  // Lead times may have changed since the last time, so clear the journey's alerts first.
   await cancelWindowAlerts(journeyId)
-  const notifications = minutesBefore
+  const alerts = minutesBefore
     .map((minutes) => ({
-      id: alertId(journeyId, minutes),
+      id: `${journeyId}:${minutes}`,
+      journeyId,
       title,
-      body: `Booking opens in ${minutes} min`,
-      schedule: { at: new Date(opensAt.getTime() - minutes * 60_000), allowWhileIdle: true },
+      at: new Date(opensAt.getTime() - minutes * 60_000).toISOString(),
+      opensAt: opensAt.toISOString(),
     }))
-    .filter(({ schedule }) => schedule.at.getTime() > Date.now())
+    .filter(({ at }) => Date.parse(at) > Date.now())
 
-  if (notifications.length > 0) await LocalNotifications.schedule({ notifications })
-  return { scheduled: notifications.length, exact: await exactAlarmsAllowed() }
+  for (const alert of alerts) await alertCollection.save(alert)
+  await armSavedAlerts()
+  return { scheduled: alerts.length }
+}
+
+/** Shows a notification now, replacing the last one with the same key. Returns false if permission was refused. */
+export async function showNotice(key: string, title: string, body: string) {
+  if (!(await notificationsAllowed())) return false
+  show(key, title, body)
+  return true
 }

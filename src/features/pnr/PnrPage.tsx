@@ -77,7 +77,7 @@ export function PnrPage() {
       <ConfirmSheet
         open={removing !== null}
         title="Remove this PNR?"
-        body={removing ? `${formatPnr(removing.pnr)} will be removed from this phone. The ticket itself isn't affected.` : ''}
+        body={removing ? `${formatPnr(removing.pnr)} will be removed from RailBook. The ticket itself isn't affected.` : ''}
         confirmLabel="Remove"
         onConfirm={async () => {
           if (removing) await remove(removing.id)

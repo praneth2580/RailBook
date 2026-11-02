@@ -32,7 +32,7 @@ type SessionResult = { booked: true; pnr: string; seconds: number } | { booked: 
 
 /**
  * A guided run through one booking. RailBook's own steps complete by themselves; the person does
- * every step on the official site and taps through as they finish it. Practice mode uses the same
+ * every step on the official site and clicks through as they finish it. Practice mode uses the same
  * screen without the app steps, and nothing it does is saved apart from the best time.
  */
 export function BookingSession({

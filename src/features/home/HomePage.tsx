@@ -59,7 +59,7 @@ export function HomePage() {
               </Link>
             }
           >
-            Plan a task and RailBook counts down to its window, checks you're ready and keeps every detail a tap
+            Plan a task and RailBook counts down to its window, checks you're ready and keeps every detail a click
             away.
           </EmptyState>
         )

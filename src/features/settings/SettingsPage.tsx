@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { formatDuration } from '../../core/format'
 import { useSettings } from '../../core/settings'
-import { clearDeviceData } from '../../core/storage'
+import { clearAppData } from '../../core/storage'
 import type { Profile, Theme } from '../../core/types'
 import { ALERT_MINUTE_OPTIONS } from '../../platform/alerts'
 import { Segmented, ToggleChips } from '../../ui/controls'
@@ -31,7 +31,7 @@ export function SettingsPage() {
   }
 
   const clearAll = async () => {
-    await clearDeviceData()
+    await clearAppData()
     // Reload so every screen starts again from empty storage.
     window.location.replace('/')
   }
@@ -70,8 +70,8 @@ export function SettingsPage() {
           </button>
         </form>
         <Notice icon="lock">
-          RailBook never asks for your IRCTC password. These details stay on this phone in app storage, which isn't
-          encrypted.
+          RailBook never asks for your IRCTC password. These details stay on this computer in RailBook's data folder,
+          which isn't encrypted.
         </Notice>
       </section>
 
@@ -140,7 +140,7 @@ export function SettingsPage() {
       <ConfirmSheet
         open={clearing}
         title="Clear all data?"
-        body="This deletes every booking task, passenger, PNR and setting on this phone. It can't be undone."
+        body="This deletes every booking task, passenger, PNR and setting on this computer. It can't be undone."
         confirmLabel="Clear everything"
         onConfirm={clearAll}
         onClose={() => setClearing(false)}

@@ -7,30 +7,23 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
+    "dev": "scripts/with-node.sh node scripts/desktop-dev.mjs",
+    "build": "tsc --noEmit && tsc -p desktop --noEmit && vite build",
     "test": "scripts/with-node.sh vitest run",
-    "android:sync": "npm run build && scripts/with-node.sh cap sync android",
-    "android:open": "scripts/with-node.sh cap open android",
-    "android:run": "npm run build && scripts/with-node.sh cap run android"
+    "package": "tsc --noEmit && tsc -p desktop --noEmit && scripts/with-node.sh node scripts/package-desktop.mjs"
   },
   "dependencies": {
-    "@capacitor/android": "^8.6.0",
-    "@capacitor/browser": "^8.0.5",
-    "@capacitor/clipboard": "^8.0.1",
-    "@capacitor/core": "^8.6.0",
-    "@capacitor/local-notifications": "^8.3.1",
-    "@capacitor/preferences": "^8.0.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.5"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.6.0",
+    "@types/node": "^22.20.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "@yao-pkg/pkg": "^6.24.0",
+    "happy-dom": "^21.0.4",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"

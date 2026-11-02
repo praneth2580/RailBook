@@ -20,7 +20,7 @@ const TABS: { to: string; label: string; icon: IconName }[] = [
   { to: '/settings', label: 'Settings', icon: 'settings' },
 ]
 
-// Focused flows hide the tab bar so a stray tap can't leave them.
+// Focused flows hide the tab bar so a stray click can't leave them.
 const FULL_SCREEN = ['/welcome', '/tasks/new', '/tasks/:id/edit', '/tasks/:id/run', '/practice']
 
 export function App() {

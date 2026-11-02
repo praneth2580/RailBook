@@ -64,7 +64,7 @@ export function CopyPanel({
 
   return (
     <section className="card">
-      <SectionHead title="Copy panel" action={<small className="muted">Tap to copy</small>} />
+      <SectionHead title="Copy panel" action={<small className="muted">Click to copy</small>} />
       {username && <CopyRow label="IRCTC username" value={username} />}
       <JourneyCopyRows journey={journey} />
       <PassengerCopyRows passengers={passengers} />

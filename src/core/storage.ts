@@ -1,19 +1,21 @@
-import { Preferences } from '@capacitor/preferences'
 import { useCallback, useEffect, useState } from 'react'
+import { callApi } from '../platform/api'
 
 export interface KeyValueStore {
   get(key: string): Promise<string | null>
   set(key: string, value: string): Promise<void>
 }
 
-// Preferences is plain app storage on Android, not encrypted storage.
-const deviceStore: KeyValueStore = {
-  get: async (key) => (await Preferences.get({ key })).value,
-  set: (key, value) => Preferences.set({ key, value }),
+// The launcher keeps these in a plain JSON file in RailBook's data folder. It isn't encrypted.
+const appStore: KeyValueStore = {
+  get: async (key) => (await callApi<{ value: string | null }>('store/get', { key })).value,
+  set: async (key, value) => {
+    await callApi('store/set', { key, value })
+  },
 }
 
-export function clearDeviceData() {
-  return Preferences.clear()
+export async function clearAppData() {
+  await callApi('store/clear', {})
 }
 
 export interface Collection<T extends { id: string }> {
@@ -24,7 +26,7 @@ export interface Collection<T extends { id: string }> {
 
 export function createCollection<T extends { id: string }>(
   key: string,
-  store: KeyValueStore = deviceStore,
+  store: KeyValueStore = appStore,
 ): Collection<T> {
   const list = async () => {
     const raw = await store.get(key)
@@ -72,7 +74,7 @@ export interface StoredDocument<T extends object> {
 export function createDocument<T extends object>(
   key: string,
   defaults: T,
-  store: KeyValueStore = deviceStore,
+  store: KeyValueStore = appStore,
 ): StoredDocument<T> {
   const get = async () => {
     const raw = await store.get(key)

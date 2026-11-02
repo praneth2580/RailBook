@@ -4,6 +4,15 @@ dist
 coverage
 *.tsbuildinfo
 
+# Desktop packaging: the bundled launcher and the executables
+/build/
+/release/
+
+# Code signing keys for the executables (Windows Authenticode, Apple notarization)
+*.pfx
+*.p12
+*.p8
+
 # Local environment
 *.local
 .env
@@ -18,9 +27,5 @@ coverage
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
 *.sw?
-
-# Release signing keys and their passwords
-*.jks
-*.keystore
-keystore.properties

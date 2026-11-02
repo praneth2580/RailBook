@@ -163,11 +163,7 @@ function AlertsCard({ journey, minutes }: { journey: Journey; minutes: number[] 
     const result = await scheduleWindowAlerts(journey.id, `${journey.from} to ${journey.to}`, journeyOpensAt(journey), minutes)
     if (result === null) setMessage('Notifications are turned off for RailBook.')
     else if (result.scheduled === 0) setMessage('The window is too close for alerts.')
-    else if (!result.exact) {
-      setMessage(
-        `${result.scheduled} alerts set, but they may arrive late. Allow "Alarms & reminders" for RailBook in Android settings.`,
-      )
-    } else setMessage(`${result.scheduled} alerts set.`)
+    else setMessage(`${result.scheduled} alerts set.`)
   }
 
   return (
@@ -189,7 +185,7 @@ function AlertsCard({ journey, minutes }: { journey: Journey; minutes: number[] 
         </button>
       </div>
       <small className="muted">
-        {message || 'Android may ask you to allow notifications and "Alarms & reminders". Press back to return.'}
+        {message || 'Alerts appear while RailBook is open, so keep it running before the window.'}
       </small>
     </section>
   )
