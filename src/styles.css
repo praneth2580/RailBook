@@ -1124,6 +1124,15 @@ textarea:focus {
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
+input:disabled,
+textarea:disabled,
+select:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  background: var(--surface-2);
+  border-color: var(--line);
+}
+
 input:user-invalid,
 textarea:user-invalid {
   border-color: var(--danger);
@@ -2830,6 +2839,20 @@ body:has(.focus-footer) .toasts {
 }
 
 /* ---------- IRCTC logins ---------- */
+
+.vault-status {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  color: var(--success);
+  background: var(--success-soft);
+  border-radius: var(--radius-sm);
+}
+
+.vault-status strong {
+  color: var(--ink);
+}
 
 .login-list {
   display: flex;

@@ -25,6 +25,13 @@ export interface ServerOptions {
     setHeadless(headless: boolean): Promise<void>
   }
   openDataFolder: () => Promise<void>
+  /** The companion site RAILBOOK_SITE_URL opens, when it's set. Its API doesn't exist otherwise. */
+  site?: {
+    info(): Promise<object>
+    extract(schema: unknown): Promise<object>
+    open(url: unknown): Promise<object>
+    act(options: unknown): Promise<object>
+  }
   /** Lets a second launch ask this one to bring its window forward, through the instance file. */
   instanceSecret: string
   focus: () => Promise<void>
@@ -96,6 +103,15 @@ function webAddress(value: unknown) {
   return url
 }
 
+function siteApi(site: NonNullable<ServerOptions['site']>) {
+  return {
+    'site/info': () => site.info(),
+    'site/extract': (body: Record<string, unknown>) => site.extract(body.schema),
+    'site/open': (body: Record<string, unknown>) => site.open(body.url),
+    'site/act': (body: Record<string, unknown>) => site.act(body),
+  }
+}
+
 function devApi(dev: NonNullable<ServerOptions['dev']>) {
   return {
     'dev/scraping-browser': async () => ({ headless: dev.isHeadless() }),
@@ -130,6 +146,7 @@ export async function startServer(options: ServerOptions): Promise<AppServer> {
       return {}
     },
     'app-info': async () => options.appInfo,
+    ...(options.site && siteApi(options.site)),
     ...(options.dev && devApi(options.dev)),
     'open-data-folder': async () => {
       await options.openDataFolder()

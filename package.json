@@ -8,9 +8,10 @@
   },
   "scripts": {
     "dev": "scripts/with-node.sh node scripts/desktop-dev.mjs",
-    "build": "tsc --noEmit && tsc -p desktop --noEmit && vite build",
+    "build": "tsc --noEmit && tsc -p desktop --noEmit && tsc -p scrapers --noEmit && vite build",
     "test": "scripts/with-node.sh vitest run",
-    "package": "tsc --noEmit && tsc -p desktop --noEmit && scripts/with-node.sh node scripts/package-desktop.mjs"
+    "package": "tsc --noEmit && tsc -p desktop --noEmit && tsc -p scrapers --noEmit && scripts/with-node.sh node scripts/package-desktop.mjs",
+    "scrape": "scripts/with-node.sh node scrapers/run.ts"
   },
   "dependencies": {
     "react": "^19.3.1",

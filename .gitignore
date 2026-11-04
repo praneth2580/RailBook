@@ -8,6 +8,9 @@ coverage
 /build/
 /release/
 
+# Scraper results
+/scrapers/output/
+
 # Code signing keys for the executables (Windows Authenticode, Apple notarization)
 *.pfx
 *.p12

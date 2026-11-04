@@ -198,6 +198,44 @@ describe('startServer', () => {
     await wasStopped
   })
 
+  it('serves the companion site only when one is configured', async () => {
+    const { api } = await setup()
+    expect((await api('site/info', {})).status).toBe(404)
+
+    const calls: unknown[] = []
+    const configured = await setup({
+      site: {
+        info: async () => ({
+          configuredUrl: 'https://example.com/',
+          url: 'https://example.com/',
+          title: 'Example',
+          headless: true,
+        }),
+        extract: async (schema) => {
+          calls.push(['extract', schema])
+          return { title: 'Example' }
+        },
+        open: async (url) => {
+          calls.push(['open', url])
+          return { url }
+        },
+        act: async (options) => {
+          calls.push(['act', options])
+          return {}
+        },
+      },
+    })
+    expect(await (await configured.api('site/info', {})).json()).toMatchObject({ title: 'Example' })
+    await configured.api('site/extract', { schema: { title: 'h1' } })
+    await configured.api('site/open', { url: 'https://example.com/next' })
+    await configured.api('site/act', { actions: [{ type: 'scroll', times: 2 }] })
+    expect(calls).toEqual([
+      ['extract', { title: 'h1' }],
+      ['open', 'https://example.com/next'],
+      ['act', { actions: [{ type: 'scroll', times: 2 }] }],
+    ])
+  })
+
   it('serves the scraping browser switch only under npm run dev', async () => {
     const { api } = await setup()
     expect((await api('dev/scraping-browser', {})).status).toBe(404)

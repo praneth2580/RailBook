@@ -1,7 +1,11 @@
 // Runs RailBook from source: Vite serves the UI with hot reload and loads the launcher's TypeScript directly.
 // npm run dev -- --headed starts the scraping browser visible; Settings › Developer switches it either way.
+import { existsSync } from 'node:fs'
 import { createServer as createNetServer } from 'node:net'
 import { createServer } from 'vite'
+
+// Load .env, so RAILBOOK_SITE_URL and friends set there reach the launcher. Copy .env.example to start.
+if (existsSync('.env')) process.loadEnvFile('.env')
 
 // Hot reload needs a WebSocket server of its own, since RailBook's server only answers pages and its API.
 const hmrPort = await new Promise((resolve) => {

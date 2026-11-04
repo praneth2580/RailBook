@@ -6,7 +6,6 @@ import {
   type SelectorSchema,
   type WraithPage,
 } from 'wraithjs'
-import { isBlockedHost } from '../../src/automation/blockedHosts'
 import type { Fields } from '../../src/automation/fields'
 import { withoutHash, type LoadedPage, type PageLoader } from '../../src/automation/jobs'
 import { globToRegExp, type PageAction, type RenderOptions } from '../../src/automation/render'
@@ -90,7 +89,7 @@ function fromHtml(url: string, status: number, body: string, captured: unknown[]
   }
 }
 
-async function runAction(page: WraithPage, action: PageAction, index: number) {
+export async function runAction(page: WraithPage, action: PageAction, index: number) {
   const name = `Action ${index + 1}`
   const present = async (selector: string) => (await page.raw.locator(selector).count()) > 0
   switch (action.type) {
@@ -129,8 +128,7 @@ async function runAction(page: WraithPage, action: PageAction, index: number) {
 
 /**
  * Loads pages with WRAITH. RailBook runs it as itself: robots.txt is respected, requests say they come from RailBook,
- * input isn't made to look human, and there are no proxies or rotating user agents. IRCTC is refused before any
- * request, after redirects, and inside rendered pages too.
+ * input isn't made to look human, and there are no proxies or rotating user agents.
  */
 export function createWraithLoader({
   executablePath,
@@ -154,16 +152,6 @@ export function createWraithLoader({
     logger: false,
   })
 
-  // Even a script on a rendered page can't reach a blocked host.
-  let guarded: Promise<unknown> | undefined
-  const guard = () =>
-    (guarded ??= wraith.context().then((context) =>
-      context.route(
-        (url) => isBlockedHost(url.hostname),
-        (route) => route.abort('blockedbyclient'),
-      ),
-    ))
-
   const check = (address: string) => {
     let url: URL
     try {
@@ -172,13 +160,10 @@ export function createWraithLoader({
       throw new Error(`Not a web address: ${address}`)
     }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Only http and https pages can be read.')
-    if (isBlockedHost(url.hostname)) throw new Error(`RailBook doesn't scrape ${url.hostname}.`)
     return url.href
   }
 
-  const checkResponse = (requested: string, finalUrl: string, status: number) => {
-    const finalHost = new URL(finalUrl).hostname
-    if (isBlockedHost(finalHost)) throw new Error(`RailBook doesn't scrape ${finalHost}.`)
+  const checkResponse = (requested: string, status: number) => {
     if (status >= 400) throw new Error(`${host(requested)} answered ${status}.`)
   }
 
@@ -186,12 +171,11 @@ export function createWraithLoader({
     const page = await abortable(wraith.fetch(url), signal).catch((error: unknown) => {
       throw signal?.aborted ? error : explain(error, url)
     })
-    checkResponse(url, page.url, page.status)
+    checkResponse(url, page.status)
     return fromHtml(page.url, page.status, page.body, [])
   }
 
   async function loadRendered(url: string, options: RenderOptions, signal?: AbortSignal) {
-    await guard()
     const page = await wraith.newPage()
     // Closing the tab is how a cancelled run stops whatever the page was doing.
     const onAbort = () => void page.close().catch(() => undefined)
@@ -200,7 +184,7 @@ export function createWraithLoader({
       const capture = options.capture ? page.captureJson(globToRegExp(options.capture)) : null
       const response = await page.goto(url)
       const status = response?.status() ?? 200
-      checkResponse(url, page.url(), status)
+      checkResponse(url, status)
       await page.waitForSettled({ timeout: SETTLE_MS })
       for (const [index, action] of (options.actions ?? []).entries()) {
         signal?.throwIfAborted()

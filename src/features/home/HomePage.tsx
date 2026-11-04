@@ -29,8 +29,8 @@ export function HomePage({ onSearch }: { onSearch: () => void }) {
     {
       done: vault.count > 0,
       title: 'Save your IRCTC login',
-      body: 'Encrypted, and ready to copy when you sign in.',
-      to: '/settings#logins',
+      body: 'Your username and password, encrypted, ready to copy when you sign in.',
+      to: '/settings#profile',
       icon: 'user',
     },
     {

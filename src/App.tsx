@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, matchPath, useLocation, useNavi
 import { SettingsProvider, useSettings } from './core/settings'
 import { HomePage } from './features/home/HomePage'
 import { VaultProvider } from './features/logins/VaultProvider'
+import { SiteProvider } from './features/site/SiteProvider'
 import { PassengersPage } from './features/passengers/PassengersPage'
 import { PnrPage } from './features/pnr/PnrPage'
 import { SettingsPage } from './features/settings/SettingsPage'
@@ -22,11 +23,13 @@ export function App() {
   return (
     <SettingsProvider>
       <VaultProvider>
-        <ToastProvider>
-          <BrowserRouter>
-            <Shell />
-          </BrowserRouter>
-        </ToastProvider>
+        <SiteProvider>
+          <ToastProvider>
+            <BrowserRouter>
+              <Shell />
+            </BrowserRouter>
+          </ToastProvider>
+        </SiteProvider>
       </VaultProvider>
     </SettingsProvider>
   )

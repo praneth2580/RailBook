@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useSettings } from '../../core/settings'
 import { clearAppData } from '../../core/storage'
-import type { Profile, Theme } from '../../core/types'
+import type { IrctcLogin, Theme } from '../../core/types'
 import { ALERT_MINUTE_OPTIONS } from '../../platform/alerts'
 import { getAppInfo, openDataFolder, type AppInfo } from '../../platform/appInfo'
 import { getScrapingBrowser, setScrapingBrowser } from '../../platform/devTools'
@@ -10,19 +10,14 @@ import { Switch, ToggleChips } from '../../ui/controls'
 import { Icon, type IconName } from '../../ui/Icon'
 import { Avatar, ConfirmDialog, Notice, PageHeader } from '../../ui/layout'
 import { useToast } from '../../ui/toast'
-import { LoginsSection } from '../logins/LoginsSection'
-import { useVault } from '../logins/VaultProvider'
+import { LoginsSection, MasterPasswordSection } from '../logins/LoginsSection'
+import { SecretInput } from '../logins/SecretInput'
+import { pickLogin, useVault } from '../logins/VaultProvider'
 
 const THEMES: { theme: Theme; label: string; detail: string; icon: IconName }[] = [
   { theme: 'system', label: 'System', detail: 'Follow the computer', icon: 'monitor' },
   { theme: 'light', label: 'Light', detail: 'Always light', icon: 'sun' },
   { theme: 'dark', label: 'Dark', detail: 'Always dark', icon: 'moon' },
-]
-
-const PROFILE_FIELDS: { key: keyof Profile; label: string; type: string; hint?: string }[] = [
-  { key: 'name', label: 'Your name', type: 'text' },
-  { key: 'mobile', label: 'Mobile', type: 'tel', hint: 'Suggested for new tasks' },
-  { key: 'email', label: 'Email', type: 'email' },
 ]
 
 function SettingsSection({
@@ -51,10 +46,15 @@ function SettingsSection({
 function DeveloperSection() {
   const toast = useToast()
   const [headless, setHeadless] = useState<boolean | null>(null)
+  const [available, setAvailable] = useState(true)
   const [busy, setBusy] = useState(false)
 
+  // The launcher only answers when npm run dev started it, so hide the section when it doesn't.
   useEffect(() => {
-    void getScrapingBrowser().then(({ headless: current }) => setHeadless(current))
+    getScrapingBrowser().then(
+      ({ headless: current }) => setHeadless(current),
+      () => setAvailable(false),
+    )
   }, [])
 
   const change = async (show: boolean) => {
@@ -69,6 +69,7 @@ function DeveloperSection() {
     }
   }
 
+  if (!available) return null
   return (
     <SettingsSection
       id="developer"
@@ -82,7 +83,7 @@ function DeveloperSection() {
             description={
               busy
                 ? 'Switching…'
-                : "Runs WRAITH's Chrome in a visible window, to watch pages load and actions run. Start this way with npm run dev -- --headed."
+                : "Runs WRAITH's Chrome in a visible window, to watch pages load and actions run, and reopens the companion website the same way when one is set. Start this way with npm run dev -- --headed."
             }
             checked={!headless}
             onChange={(show) => void change(show)}
@@ -113,7 +114,18 @@ export function SettingsPage({ onShowShortcuts }: { onShowShortcuts: () => void 
   const [profile, setProfile] = useState(settings.profile)
   const [clearing, setClearing] = useState(false)
   const [info, setInfo] = useState<AppInfo | null>(null)
-  const changed = PROFILE_FIELDS.some(({ key }) => profile[key] !== settings.profile[key])
+  // The IRCTC username and password are the default login's, saved in the vault the master password encrypts.
+  const unlocked = vault.status === 'unlocked'
+  const defaultLogin = unlocked ? pickLogin(vault.logins) : undefined
+  const savedUsername = vault.status === 'none' ? settings.profile.irctcUsername : (defaultLogin?.username ?? '')
+  const savedPassword = defaultLogin?.password ?? ''
+  const [login, setLogin] = useState({ username: savedUsername, password: savedPassword })
+  const [loginError, setLoginError] = useState('')
+  const loginChanged = unlocked && (login.username !== savedUsername || login.password !== savedPassword)
+  const changed = profile.name !== settings.profile.name || loginChanged
+
+  // Show the default login once it can be read, and again when it changes in IRCTC logins below.
+  useEffect(() => setLogin({ username: savedUsername, password: savedPassword }), [savedUsername, savedPassword])
 
   useEffect(() => {
     void getAppInfo().then(setInfo)
@@ -124,10 +136,35 @@ export function SettingsPage({ onShowShortcuts }: { onShowShortcuts: () => void 
     if (hash) document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' })
   }, [hash])
 
+  const loginToSave = (): IrctcLogin => {
+    const username = login.username.trim()
+    if (!username) throw new Error('Add your IRCTC username to go with the password.')
+    const base: IrctcLogin = defaultLogin ?? {
+      id: crypto.randomUUID(),
+      label: 'Mine',
+      username: '',
+      password: '',
+      mobile: profile.mobile,
+      email: profile.email,
+      note: '',
+      isDefault: true,
+    }
+    return { ...base, username, password: login.password, isDefault: true }
+  }
+
   const saveProfile = async (event: FormEvent) => {
     event.preventDefault()
-    await update({ profile: { ...profile, name: profile.name.trim() } })
-    toast('Profile saved')
+    setLoginError('')
+    try {
+      if (loginChanged) await vault.save(loginToSave())
+      // The vault now holds the username, so the old plain-text copy can go.
+      await update({
+        profile: { ...profile, name: profile.name.trim(), irctcUsername: unlocked ? '' : profile.irctcUsername },
+      })
+      toast('Profile saved')
+    } catch (failure) {
+      setLoginError(failure instanceof Error ? failure.message : String(failure))
+    }
   }
 
   const clearAll = async () => {
@@ -144,7 +181,7 @@ export function SettingsPage({ onShowShortcuts }: { onShowShortcuts: () => void 
         <SettingsSection
           id="profile"
           title="Profile"
-          description="Your name, and the mobile number new tasks suggest for the ticket."
+          description="Your name and your IRCTC username and password. The master password below encrypts the IRCTC details before they're saved."
         >
           <div className="profile-head">
             <Avatar id="profile" name={profile.name || 'You'} size={44} />
@@ -158,18 +195,41 @@ export function SettingsPage({ onShowShortcuts }: { onShowShortcuts: () => void 
             </span>
           </div>
           <form className="form-grid two" onSubmit={saveProfile}>
-            {PROFILE_FIELDS.map(({ key, label, type, hint }) => (
-              <label key={key} className="field">
-                <span>{label}</span>
-                <input
-                  type={type}
-                  autoComplete="off"
-                  value={profile[key]}
-                  onChange={(event) => setProfile({ ...profile, [key]: event.target.value })}
-                />
-                {hint && <small className="field-hint">{hint}</small>}
-              </label>
-            ))}
+            <label className="field span-2">
+              <span>Profile name</span>
+              <input
+                autoComplete="off"
+                value={profile.name}
+                onChange={(event) => setProfile({ ...profile, name: event.target.value })}
+              />
+            </label>
+            <label className="field">
+              <span>IRCTC username</span>
+              <input
+                autoComplete="off"
+                spellCheck={false}
+                disabled={!unlocked}
+                value={login.username}
+                onChange={(event) => setLogin({ ...login, username: event.target.value })}
+              />
+            </label>
+            <SecretInput
+              label="IRCTC password"
+              value={login.password}
+              disabled={!unlocked}
+              onChange={(password) => setLogin({ ...login, password })}
+              autoComplete="new-password"
+            />
+            <small className="muted span-2">
+              {vault.status === 'none'
+                ? 'Set a master password below first. It encrypts your IRCTC username and password before they are saved.'
+                : vault.status === 'locked'
+                  ? 'Locked. Unlock with your master password below to see or change them.'
+                  : defaultLogin
+                    ? `Your default IRCTC login, “${defaultLogin.label}”. Encrypted with your master password.`
+                    : 'Encrypted with your master password when you save.'}
+            </small>
+            {loginError && <small className="error span-2">{loginError}</small>}
             <div className="form-actions span-2">
               <button type="submit" className="button" disabled={!changed}>
                 {changed ? 'Save profile' : 'Profile saved'}
@@ -179,9 +239,17 @@ export function SettingsPage({ onShowShortcuts }: { onShowShortcuts: () => void 
         </SettingsSection>
 
         <SettingsSection
+          id="master-password"
+          title="Master password"
+          description="Encrypts your IRCTC usernames and passwords before they're saved. RailBook never saves it, so if you forget it the logins can only be deleted."
+        >
+          <MasterPasswordSection />
+        </SettingsSection>
+
+        <SettingsSection
           id="logins"
           title="IRCTC logins"
-          description="The accounts you book with, for the copy panel. Encrypted with a master password before they're saved. RailBook never signs in for you."
+          description="Every account you book with, such as family members'. Your profile login is the default. RailBook only copies them for you to paste; it never signs in."
         >
           <LoginsSection />
         </SettingsSection>

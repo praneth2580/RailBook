@@ -16,7 +16,8 @@ interface VaultContextValue {
   count: number
   /** Empty unless unlocked. */
   logins: IrctcLogin[]
-  create(password: string): Promise<void>
+  /** Starts the vault with these logins, or with the username an older profile kept. */
+  create(password: string, logins?: IrctcLogin[]): Promise<void>
   /** Throws WrongPasswordError for the wrong master password. */
   unlock(password: string): Promise<void>
   lock(): void
@@ -92,26 +93,29 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     status: blob === undefined ? 'loading' : blob === null ? 'none' : logins ? 'unlocked' : 'locked',
     count: blob?.count ?? 0,
     logins: logins ?? [],
-    async create(password) {
+    async create(password, logins) {
       // A username saved before logins had a vault becomes the first login.
       const legacy = settings.profile.irctcUsername.trim()
-      const first: IrctcLogin[] = legacy
-        ? [
-            {
-              id: crypto.randomUUID(),
-              label: 'My account',
-              username: legacy,
-              password: '',
-              mobile: settings.profile.mobile,
-              email: settings.profile.email,
-              note: '',
-              isDefault: true,
-            },
-          ]
-        : []
+      const first: IrctcLogin[] = logins
+        ? withOneDefault(logins)
+        : legacy
+          ? [
+              {
+                id: crypto.randomUUID(),
+                label: 'My account',
+                username: legacy,
+                password: '',
+                mobile: settings.profile.mobile,
+                email: settings.profile.email,
+                note: '',
+                isDefault: true,
+              },
+            ]
+          : []
       const created = await createVault(password, first)
       await store(created.blob, created.vault)
-      if (legacy) await update({ profile: { ...settings.profile, irctcUsername: '' } })
+      // A caller that passes logins saves the profile itself, so it clears the old username too.
+      if (legacy && !logins) await update({ profile: { ...settings.profile, irctcUsername: '' } })
     },
     async unlock(password) {
       if (!blob) return

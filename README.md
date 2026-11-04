@@ -12,9 +12,12 @@ npm run dev -- --headed  # the same, with the scraping browser visible
 npm test              # unit and integration tests; the rendered-page tests run when a browser is installed
 npm run build         # type-check and build the UI
 npm run package       # build a single executable for this computer into release/
+npm run scrape        # list the scraper tasks in scrapers/, or run one
 ```
 
 Under `npm run dev`, Settings › Developer has a switch that shows or hides the browser WRAITH scrapes with, without a restart, and remembers the choice between dev runs. Packaged builds always keep it hidden, and leave the switch and its API out.
+
+`RAILBOOK_SITE_URL` opens a companion website beside the app (see [Companion website](#companion-website)); `RAILBOOK_SITE_HEADED=1` shows its window. Under `npm run dev` these load from `.env` (copy `.env.example`); a packaged RailBook reads the real environment.
 
 `npm run package -- --targets node22-win-x64,node22-macos-arm64` builds for other platforms. Windows executables are marked as GUI programs so no console opens with them; add `--console` to keep it for debugging. macOS executables need signing before they run on Apple Silicon, so build those on a Mac.
 
@@ -39,6 +42,7 @@ Data lives in `~/.config/RailBook` on Linux, `~/Library/Application Support/Rail
 |---|---|
 | `desktop` | The launcher: server, browser discovery, app window, data store |
 | `desktop/scraping` | The scraping engine: loads pages with WRAITH and serves `scrape/preview` and `scrape/run` |
+| `scrapers` | A command-line framework for scraping one website with WRAITH; see its README |
 | `scripts/desktop-dev.mjs` | Runs the launcher from source with Vite serving the UI |
 | `scripts/package-desktop.mjs` | Builds, bundles and packages the executable |
 | `src/core` | Shared types, storage, settings and formatting |
@@ -81,7 +85,13 @@ Scraping runs in the launcher on [WRAITH](https://github.com/praneth2580/WRAITH)
 
 The window sends jobs to `scrape/preview`, which reads only the first start page, and `scrape/run`. `src/automation/diff.ts` compares a run with the last good one, for spotting new and changed records.
 
-RailBook runs WRAITH as itself: robots.txt (including Crawl-delay) is respected, there's at least a second between requests to one site, failures are retried with backoff, and requests carry RailBook's User-Agent. Human-style input, proxies, rotating user agents and honeypot evasion stay off. IRCTC is refused when a job is saved, before every request and after redirects, and rendered pages can't reach it either, because the browser blocks those requests.
+### Companion website
+
+Set `RAILBOOK_SITE_URL` and the launcher keeps that one website open beside the app for its whole run, and app code can read from and act on it. `RAILBOOK_SITE_HEADED=1` shows its browser window; otherwise it stays hidden. The page opens once the app window is up. Under `npm run dev`, Settings › Developer's "Show the scraping browser" switch reopens the companion website visible or hidden to match, without a restart.
+
+The window reaches it through `site/info` (where the page is), `site/extract` (read the live page with a selector schema), `site/open` (navigate it to another address) and `site/act` (click, type, scroll, wait). In the app, `useSite()` ([src/features/site/SiteProvider.tsx](src/features/site/SiteProvider.tsx)) puts it in React context, with `status: 'off'` when no URL is set. The API doesn't exist when it isn't.
+
+RailBook runs WRAITH as itself: robots.txt (including Crawl-delay) is respected, there's at least a second between requests to one site, failures are retried with backoff, and requests carry RailBook's User-Agent. Human-style input, proxies, rotating user agents and honeypot evasion stay off.
 
 ## Limits
 
@@ -89,4 +99,4 @@ RailBook helps the person booking and does not book for them. It does not automa
 
 Tasks, passengers, PNRs and settings are stored in `data.json`, which is not encrypted.
 
-IRCTC logins (Settings › IRCTC logins) are kept in an encrypted vault instead: AES-256-GCM, with a key derived from your master password by PBKDF2-SHA-256 at 600,000 iterations. Encryption happens in the window, so the launcher and `data.json` only see ciphertext, and the master password is never saved. Forget it and the logins can only be deleted. They unlock once per session and lock again after 15 minutes without use or when RailBook closes. RailBook only copies them for you to paste on the official site, and wipes a copied password from the clipboard after 30 seconds. It never signs in, and logins never reach the scraping engine. The browser's own password saving is off in RailBook's profile, so it keeps no second copy.
+IRCTC usernames and passwords are kept in an encrypted vault instead. Your own go in Settings › Profile, family members' in Settings › IRCTC logins, and Settings › Master password sets, unlocks and changes the encryption: AES-256-GCM, with a key derived from your master password by PBKDF2-SHA-256 at 600,000 iterations. Encryption happens in the window, so the launcher and `data.json` only see ciphertext, and the master password is never saved. Forget it and the logins can only be deleted. They unlock once per session and lock again after 15 minutes without use or when RailBook closes. RailBook only copies them for you to paste on the official site, and wipes a copied password from the clipboard after 30 seconds. It never signs in, and logins never reach the scraping engine. The browser's own password saving is off in RailBook's profile, so it keeps no second copy.

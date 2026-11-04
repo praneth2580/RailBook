@@ -50,7 +50,7 @@ export function LoginCopyRows({ loginId, practice = false }: { loginId?: string;
   if (!login) {
     return (
       <p className="copy-hint muted">
-        <Link to="/settings#logins">Save your IRCTC login</Link> to copy it from here.
+        <Link to="/settings#profile">Save your IRCTC login</Link> to copy it from here.
       </p>
     )
   }

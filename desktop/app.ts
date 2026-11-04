@@ -5,6 +5,7 @@ import packageJson from '../package.json'
 import { findChrome } from './chrome'
 import { claimInstance, focusRunningInstance, releaseInstance } from './instance'
 import { createScrapingEngine } from './scraping/engine'
+import { createManagedSite, type ManagedSite } from './scraping/managedSite'
 import { startServer } from './server'
 import { openStore } from './store'
 import { dataDirectory, openExternal, openFolder } from './system'
@@ -54,18 +55,38 @@ export async function startApp({ ui, onExit, dev }: StartOptions) {
   const headless = dev ? !dev.headed && store.get(DEV_HEADLESS_KEY) !== 'false' : true
   const scraping = createScrapingEngine({ executablePath: executable, headless })
   if (dev) log(`Scraping browser: ${headless ? 'hidden' : 'visible'}. Switch it in Settings › Developer.`)
+
+  // RAILBOOK_SITE_URL keeps one website open beside the app for its whole run; RAILBOOK_SITE_HEADED shows its window.
+  let site: ManagedSite | undefined
+  if (process.env.RAILBOOK_SITE_URL) {
+    const siteHeadless = !/^(1|true|yes|on)$/i.test(process.env.RAILBOOK_SITE_HEADED ?? '')
+    try {
+      site = createManagedSite({
+        url: process.env.RAILBOOK_SITE_URL,
+        executablePath: executable,
+        headless: siteHeadless,
+      })
+      log(`Companion site: ${site.configuredUrl} (${siteHeadless ? 'hidden' : 'visible'}).`)
+    } catch (error) {
+      log(`Companion site not opened: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
   const secret = randomBytes(32).toString('base64url')
   let window: AppWindow | null = null
   const server = await startServer({
     ui,
     store,
     scrape: scraping,
+    site: site && { info: site.info, extract: site.extract, open: site.open, act: site.act },
     openExternal,
     appInfo: { version: packageJson.version, dataDirectory: directory, browser: executable },
     dev: dev && {
       isHeadless: scraping.isHeadless,
       setHeadless: async (next) => {
         await scraping.setHeadless(next)
+        // The companion site follows the same switch, reopening visible or hidden to match.
+        await site?.setHeadless(next)
         await store.set(DEV_HEADLESS_KEY, String(next))
       },
     },
@@ -79,6 +100,7 @@ export async function startApp({ ui, onExit, dev }: StartOptions) {
   const stop = () =>
     (stopping ??= (async () => {
       await window?.close()
+      await site?.close()
       await scraping.close()
       await server.close()
       await releaseInstance(instanceFile, secret)
@@ -95,6 +117,8 @@ export async function startApp({ ui, onExit, dev }: StartOptions) {
       profile: path.join(directory, 'browser-profile'),
     })
     log(`RailBook is open, served from ${server.origin} with ${executable}.`)
+    if (site)
+      void site.info().catch((error) => log(`Companion site: ${error instanceof Error ? error.message : error}`))
     await window.closed
   } finally {
     await stop()

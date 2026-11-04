@@ -4,56 +4,13 @@ import { copySecret } from '../../platform/clipboard'
 import { Icon } from '../../ui/Icon'
 import { Avatar, ConfirmDialog, Dialog, Notice, StatusChip } from '../../ui/layout'
 import { useToast } from '../../ui/toast'
+import { SecretInput } from './SecretInput'
 import { UnlockPrompt } from './UnlockPrompt'
 import { MIN_PASSWORD_LENGTH } from './vault'
 import { AUTO_LOCK_MINUTES, useVault } from './VaultProvider'
 
 function errorText(error: unknown) {
   return error instanceof Error ? error.message : String(error)
-}
-
-/** A password field with a show/hide toggle. */
-function SecretInput({
-  label,
-  value,
-  onChange,
-  autoComplete,
-  required = false,
-  autoFocus = false,
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  autoComplete: string
-  required?: boolean
-  autoFocus?: boolean
-}) {
-  const [shown, setShown] = useState(false)
-  return (
-    <label className="field">
-      <span>{label}</span>
-      <span className="secret-input">
-        <input
-          type={shown ? 'text' : 'password'}
-          required={required}
-          autoComplete={autoComplete}
-          spellCheck={false}
-          data-autofocus={autoFocus || undefined}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-        />
-        <button
-          type="button"
-          className="icon-button"
-          aria-label={shown ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
-          title={shown ? 'Hide' : 'Show'}
-          onClick={() => setShown(!shown)}
-        >
-          <Icon name={shown ? 'eyeOff' : 'eye'} size={16} />
-        </button>
-      </span>
-    </label>
-  )
 }
 
 function CreateVault() {
@@ -70,7 +27,7 @@ function CreateVault() {
     setBusy(true)
     try {
       await create(password)
-      toast('Saved logins are on. Add the IRCTC accounts you book with.')
+      toast('Master password set. Save your IRCTC username and password in Profile.')
     } catch (failure) {
       setError(errorText(failure))
     } finally {
@@ -99,7 +56,7 @@ function CreateVault() {
       <div className="form-actions">
         <button type="submit" className="button" disabled={busy}>
           <Icon name="lock" size={16} />
-          {busy ? 'Encrypting…' : 'Turn on saved logins'}
+          {busy ? 'Encrypting…' : 'Set master password'}
         </button>
       </div>
     </form>
@@ -414,14 +371,12 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
   )
 }
 
-/** Settings › IRCTC logins: set up, unlock and manage the encrypted logins. */
-export function LoginsSection() {
+/** Settings › Master password: sets up, unlocks, changes and locks the vault that encrypts IRCTC logins. */
+export function MasterPasswordSection() {
   const vault = useVault()
   const toast = useToast()
-  const [editing, setEditing] = useState<IrctcLogin | 'new' | null>(null)
   const [changing, setChanging] = useState(false)
   const [resetting, setResetting] = useState(false)
-  const [deleting, setDeleting] = useState<IrctcLogin | null>(null)
 
   if (vault.status === 'loading') return null
   if (vault.status === 'none') return <CreateVault />
@@ -451,10 +406,49 @@ export function LoginsSection() {
 
   return (
     <>
+      <div className="vault-status">
+        <Icon name="key" size={16} />
+        <span className="list-text">
+          <strong>Unlocked</strong>
+          <small>Locks itself after {AUTO_LOCK_MINUTES} minutes without use, and whenever RailBook closes.</small>
+        </span>
+      </div>
+      <div className="button-row">
+        <button type="button" className="button secondary small" onClick={() => setChanging(true)}>
+          <Icon name="key" size={16} />
+          Change master password
+        </button>
+        <button type="button" className="button ghost small" onClick={vault.lock}>
+          <Icon name="lock" size={16} />
+          Lock now
+        </button>
+      </div>
+      <ChangePasswordDialog open={changing} onClose={() => setChanging(false)} />
+    </>
+  )
+}
+
+/** Settings › IRCTC logins: every account you book with, once the master password has unlocked them. */
+export function LoginsSection() {
+  const vault = useVault()
+  const [editing, setEditing] = useState<IrctcLogin | 'new' | null>(null)
+  const [deleting, setDeleting] = useState<IrctcLogin | null>(null)
+
+  if (vault.status === 'loading') return null
+  if (vault.status !== 'unlocked') {
+    return (
+      <p className="muted">
+        {vault.status === 'none'
+          ? "Set a master password first. Then add family members' accounts here."
+          : 'Unlock with your master password to see and add logins.'}
+      </p>
+    )
+  }
+
+  return (
+    <>
       {vault.logins.length === 0 ? (
-        <p className="muted">
-          No logins yet. Add the IRCTC accounts you book with, such as your own and family members'.
-        </p>
+        <p className="muted">No logins yet. Save yours in Profile, and add family members' accounts here.</p>
       ) : (
         <ul className="login-list">
           {vault.logins.map((login) => (
@@ -473,18 +467,7 @@ export function LoginsSection() {
           <Icon name="plus" size={16} />
           Add login
         </button>
-        <button type="button" className="button ghost small" onClick={() => setChanging(true)}>
-          <Icon name="key" size={16} />
-          Change master password
-        </button>
-        <button type="button" className="button ghost small" onClick={vault.lock}>
-          <Icon name="lock" size={16} />
-          Lock now
-        </button>
       </div>
-      <small className="muted">
-        Locks itself after {AUTO_LOCK_MINUTES} minutes without use, and whenever RailBook closes.
-      </small>
 
       <LoginDialog
         open={editing !== null}
@@ -492,7 +475,6 @@ export function LoginsSection() {
         first={vault.logins.length === 0}
         onClose={() => setEditing(null)}
       />
-      <ChangePasswordDialog open={changing} onClose={() => setChanging(false)} />
       <ConfirmDialog
         open={deleting !== null}
         title={`Delete ${deleting?.label ?? 'this login'}?`}

@@ -48,7 +48,7 @@ beforeAll(async () => {
     '/p/1': '<h1>One</h1><p>Price: <b>10</b></p>',
     '/p/3': '<h1>Three</h1><p>Price: <b>30</b></p>',
     '/p/4': '<h1>Four</h1>',
-    '/home': `<h1>Home</h1><a href="/a">A</a><a href="/b">B</a><a href="/c/secret">C</a><a href="${other.replace('http', 'http')}/x">X</a><a href="https://www.irctc.co.in/">IRCTC</a>`,
+    '/home': `<h1>Home</h1><a href="/a">A</a><a href="/b">B</a><a href="/c/secret">C</a><a href="${other.replace('http', 'http')}/x">X</a>`,
     '/a': '<h1>A</h1><a href="/a/1">A1</a><a href="/home">Home</a>',
     '/b': '<h1>B</h1>',
     '/c/secret': '<h1>C</h1>',
@@ -91,8 +91,6 @@ beforeAll(async () => {
       const add = () => { for (let i = 0; i < 10; i++) feed.insertAdjacentHTML('beforeend', '<p class="row" style="height:300px">Row ' + shown++ + '</p>') }
       add()
       addEventListener('scroll', () => { if (shown < 30 && innerHeight + scrollY >= document.body.scrollHeight - 50) setTimeout(add, 100) })</script>`,
-    '/phones-home': `<p id="result">waiting</p><script>
-      fetch('https://www.irctc.co.in/robots.txt').then(() => result.textContent = 'reached', () => result.textContent = 'blocked')</script>`,
   })
 })
 
@@ -159,7 +157,7 @@ describe('runJob with WRAITH, plain pages', () => {
     expect(run.errors).toEqual([{ url: `${shop}/list?page=3`, message: 'Stopped at the 2-page limit.' }])
   })
 
-  it('crawls its own site to the depth asked, or wherever include and exclude allow, never IRCTC', async () => {
+  it('crawls its own site to the depth asked, or wherever include and exclude allow', async () => {
     const crawl = (step: Partial<Extract<Job['steps'][number], { type: 'crawl' }>>) =>
       runJob(
         job({
@@ -172,11 +170,9 @@ describe('runJob with WRAITH, plain pages', () => {
     expect(names(await crawl({ maxDepth: 1 }))).toEqual(['Home', 'A', 'B', 'C'])
     expect(names(await crawl({ maxDepth: 2 }))).toEqual(['Home', 'A', 'B', 'C', 'A1'])
 
-    const wide = await crawl({ include: [`${shop}/*`, `${other}/*`, 'https://www.irctc.co.in/*'], exclude: ['*/c/*'] })
+    const wide = await crawl({ include: [`${shop}/*`, `${other}/*`], exclude: ['*/c/*'] })
     expect(names(wide)).toEqual(['Home', 'A', 'B', 'X'])
-    expect(wide.errors).toEqual([
-      { url: 'https://www.irctc.co.in/', message: "RailBook doesn't scrape www.irctc.co.in." },
-    ])
+    expect(wide.errors).toEqual([])
   })
 
   it('starts from the pages a sitemap index lists, filtered by a pattern', async () => {
@@ -292,15 +288,6 @@ describe.skipIf(!chrome)('runJob with WRAITH, rendered pages', { timeout: 60_000
     )
     expect(run.errors).toEqual([{ url: `${shop}/app`, message: 'Action 1: nothing matched #missing to click.' }])
   })
-
-  it("stops a page's own scripts from reaching IRCTC", async () => {
-    const run = await rendered(
-      '/phones-home',
-      { waitFor: '#result:not(:empty)', actions: [{ type: 'wait', ms: 500 }] },
-      { fields: { result: '#result' } },
-    )
-    expect(run.records[0]?.data).toEqual({ result: 'blocked' })
-  })
 })
 
 describe('createScrapingEngine', () => {
@@ -339,10 +326,10 @@ describe('createScrapingEngine', () => {
 
   it('refuses jobs that are not valid with a 400', async () => {
     await expect(
-      engine.run({ name: 'Bad', urls: ['https://www.irctc.co.in/'], extract: { fields: { a: 'a' } } }, signal),
+      engine.run({ name: 'Bad', urls: ['ftp://x.example/'], extract: { fields: { a: 'a' } } }, signal),
     ).rejects.toMatchObject({
       status: 400,
-      message: "RailBook doesn't scrape www.irctc.co.in.",
+      message: 'Start page 1 must start with http or https.',
     })
   })
 })

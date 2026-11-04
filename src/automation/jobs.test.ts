@@ -74,7 +74,7 @@ describe('validateJob', () => {
   it('lists every problem at once', () => {
     const { errors } = validateJob({
       name: '',
-      urls: ['ftp://x.example/', 'https://www.irctc.co.in/'],
+      urls: ['ftp://x.example/'],
       steps: [{ type: 'teleport' }],
       extract: { fields: {} },
       key: 'missing',
@@ -89,10 +89,7 @@ describe('validateJob', () => {
     ])
   })
 
-  it('refuses IRCTC and checks render actions', () => {
-    expect(validateJob({ ...valid, urls: ['https://www.irctc.co.in/'] }).errors).toEqual([
-      "RailBook doesn't scrape www.irctc.co.in.",
-    ])
+  it('checks render actions', () => {
     expect(validateJob({ ...valid, render: { actions: [{ type: 'click' }] } }).errors).toEqual([
       "Action 1's selector needs a value.",
     ])

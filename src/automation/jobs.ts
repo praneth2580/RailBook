@@ -1,4 +1,3 @@
-import { isBlockedHost } from './blockedHosts'
 import type { Field, Fields, ValueField } from './fields'
 import { globToRegExp, parseRenderOptions, type RenderOptions } from './render'
 
@@ -345,7 +344,6 @@ function webAddress(value: unknown, name: string) {
     throw new Error(`${name} isn't a web address: ${String(value)}`)
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error(`${name} must start with http or https.`)
-  if (isBlockedHost(url.hostname)) throw new Error(`RailBook doesn't scrape ${url.hostname}.`)
   return url.href
 }
 

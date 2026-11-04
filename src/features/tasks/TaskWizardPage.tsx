@@ -101,6 +101,7 @@ function initialForm(journey: Journey | undefined, passengers: Passenger[], mobi
 }
 
 export function TaskWizardPage() {
+  const vault = useVault()
   const { id } = useParams()
   const { items: journeys, loaded, save } = useCollection(journeyCollection)
   const { items: passengers, loaded: passengersLoaded, save: savePassenger } = useCollection(passengerCollection)
@@ -114,7 +115,8 @@ export function TaskWizardPage() {
     <Wizard
       existing={existing}
       passengers={passengers}
-      defaultMobile={settings.profile.mobile}
+      // The default IRCTC login's registered mobile, or one saved before logins moved to the vault.
+      defaultMobile={(vault.status === 'unlocked' && pickLogin(vault.logins)?.mobile) || settings.profile.mobile}
       onSave={save}
       onSavePassenger={savePassenger}
     />
