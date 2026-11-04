@@ -5,6 +5,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ApiError } from './apiError'
 import { claimInstance, focusRunningInstance, releaseInstance } from './instance'
+import type { HumanLevel } from '../src/automation/human'
 import { startServer, type AppServer, type ServerOptions } from './server'
 import { embeddedUi } from './ui'
 
@@ -19,6 +20,7 @@ async function setup(overrides: Partial<ServerOptions> = {}) {
   const values = new Map<string, string>()
   const opened: string[] = []
   let focused = 0
+  let human: HumanLevel = 'natural'
   const server = await startServer({
     ui: embeddedUi({ '/index.html': base64('<h1>RailBook</h1>'), '/assets/app-1a2b.js': base64('console.log(1)') }),
     store: {
@@ -31,6 +33,12 @@ async function setup(overrides: Partial<ServerOptions> = {}) {
     scrape: {
       preview: async (job) => ({ previewed: job }),
       run: async (job) => ({ ran: job }),
+    },
+    human: {
+      get: () => human,
+      set: async (level) => {
+        human = level
+      },
     },
     openExternal: async (url) => {
       opened.push(url)
@@ -253,6 +261,16 @@ describe('startServer', () => {
     expect(await (await dev.api('dev/scraping-browser/set', { headless: false })).json()).toEqual({ headless: false })
     expect((await dev.api('dev/scraping-browser/set', { headless: 'no' })).status).toBe(400)
     expect(headless).toBe(false)
+  })
+
+  it('changes how human scraping input looks, but never turns it off', async () => {
+    const { api } = await setup()
+    expect(await (await api('scraping/human', {})).json()).toEqual({ human: 'natural' })
+    expect(await (await api('scraping/human/set', { human: 'careful' })).json()).toEqual({ human: 'careful' })
+    for (const human of ['off', false, 'robotic', undefined]) {
+      expect((await api('scraping/human/set', { human })).status).toBe(400)
+    }
+    expect(await (await api('scraping/human', {})).json()).toEqual({ human: 'careful' })
   })
 
   it('opens web addresses, IRCTC included, in the default browser', async () => {

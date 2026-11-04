@@ -1,8 +1,9 @@
+import { URLS } from '../features/site/urls'
 import { callApi } from './api'
 
 const OFFICIAL_PAGES = {
-  booking: 'https://www.irctc.co.in/nget/train-search',
-  pnr: 'https://www.indianrail.gov.in/enquiry/PNR/PnrEnquiry.html?locale=en',
+  booking: URLS.trainSearch,
+  pnr: URLS.pnrEnquiry,
 }
 
 // Opens in the person's own browser, where they're already signed in, rather than in RailBook's window.

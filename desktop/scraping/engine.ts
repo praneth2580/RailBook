@@ -1,3 +1,4 @@
+import type { HumanLevel } from '../../src/automation/human'
 import { runJob, validateJob, type Job } from '../../src/automation/jobs'
 import { ApiError } from '../apiError'
 import { createWraithLoader, type LoaderOptions } from './loader'
@@ -14,6 +15,7 @@ function parseJob(input: unknown): Job {
 export function createScrapingEngine(options: LoaderOptions) {
   let loader = createWraithLoader(options)
   let headless = options.headless ?? true
+  let human = options.human
 
   return {
     /** Reads only the first start page, with the job's loading and extraction settings, to check them while editing. */
@@ -36,16 +38,23 @@ export function createScrapingEngine(options: LoaderOptions) {
     },
     run: async (input: unknown, signal: AbortSignal) => runJob(parseJob(input), loader, { signal }),
     isHeadless: () => headless,
+    /** Opens the scraping browser's window, when it's visible. Otherwise it would wait for the first rendered page. */
+    showBrowser: () => loader.show(),
     /**
-     * Development only: shows or hides the scraping browser. The current one closes, and the next page opens the new
-     * way, so a run that's still going may lose its open page.
+     * Development only: shows or hides the scraping browser. The current one closes, so a run that's still going may
+     * lose its open page. A visible one opens its window at the first rendered page, or at showBrowser.
      */
     async setHeadless(next: boolean) {
       if (next === headless) return
       const previous = loader
       headless = next
-      loader = createWraithLoader({ ...options, headless: next })
+      loader = createWraithLoader({ ...options, headless: next, human })
       await previous.close()
+    },
+    /** How human input looks in rendered pages, from the next page on. */
+    setHuman(level: HumanLevel) {
+      human = level
+      loader.setHuman(level)
     },
     close: () => loader.close(),
   }

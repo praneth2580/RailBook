@@ -15,9 +15,9 @@ npm run package       # build a single executable for this computer into release
 npm run scrape        # list the scraper tasks in scrapers/, or run one
 ```
 
-Under `npm run dev`, Settings › Developer has a switch that shows or hides the browser WRAITH scrapes with, without a restart, and remembers the choice between dev runs. Packaged builds always keep it hidden, and leave the switch and its API out.
+Under `npm run dev`, Settings › Developer has a switch that shows or hides the browser WRAITH scrapes with, without a restart, and remembers the choice between dev runs. Shown, its window opens straight away (when `RAILBOOK_SITE_URL` is set, the companion website's window opens instead), and rendered pages open in it as tabs. Plain pages are downloaded without a browser, so only jobs with `render` appear there. Packaged builds always keep it hidden, and leave the switch and its API out.
 
-`RAILBOOK_SITE_URL` opens a companion website beside the app (see [Companion website](#companion-website)); `RAILBOOK_SITE_HEADED=1` shows its window. Under `npm run dev` these load from `.env` (copy `.env.example`); a packaged RailBook reads the real environment.
+`RAILBOOK_SITE_URL` opens a companion website beside the app (see [Companion website](#companion-website)); `RAILBOOK_SITE_HEADED=1` shows its window. Under `npm run dev` these load from `.env.local` and `.env` (copy `.env.example`), and `.env.local` wins where both set one; a packaged RailBook reads the real environment.
 
 `npm run package -- --targets node22-win-x64,node22-macos-arm64` builds for other platforms. Windows executables are marked as GUI programs so no console opens with them; add `--console` to keep it for debugging. macOS executables need signing before they run on Apple Silicon, so build those on a Mac.
 
@@ -91,7 +91,7 @@ Set `RAILBOOK_SITE_URL` and the launcher keeps that one website open beside the 
 
 The window reaches it through `site/info` (where the page is), `site/extract` (read the live page with a selector schema), `site/open` (navigate it to another address) and `site/act` (click, type, scroll, wait). In the app, `useSite()` ([src/features/site/SiteProvider.tsx](src/features/site/SiteProvider.tsx)) puts it in React context, with `status: 'off'` when no URL is set. The API doesn't exist when it isn't.
 
-RailBook runs WRAITH as itself: robots.txt (including Crawl-delay) is respected, there's at least a second between requests to one site, failures are retried with backoff, and requests carry RailBook's User-Agent. Human-style input, proxies, rotating user agents and honeypot evasion stay off.
+RailBook runs WRAITH as itself: robots.txt (including Crawl-delay) is respected, there's at least a second between requests to one site, failures are retried with backoff, and requests carry RailBook's User-Agent. Clicks, typing and scrolling on rendered pages and the companion website look human, at the level Settings › Scraping sets: Fast, Natural (the default) or Careful. It can't be turned off; the launcher keeps the choice in `data.json` and treats anything else as Natural. Proxies, rotating user agents and honeypot evasion stay off.
 
 ## Limits
 

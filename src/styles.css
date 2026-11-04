@@ -815,6 +815,25 @@ tr:hover .row-actions .icon-button,
   align-items: center;
 }
 
+/* SitePage: one click or key press per row of the log. */
+.site-log li {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.site-log li:first-child {
+  border-top: 0;
+}
+
+.site-log .list-text small {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .list-row {
   display: flex;
   gap: 12px;

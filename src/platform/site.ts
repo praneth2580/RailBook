@@ -1,6 +1,7 @@
 import { callApi } from './api'
 import type { Fields } from '../automation/fields'
 import type { PageAction } from '../automation/render'
+import type { SiteLogEntry } from '../features/site/siteLog'
 
 /** The companion website the launcher keeps open. Set by RAILBOOK_SITE_URL; the API 404s when it isn't. */
 export interface SiteInfo {
@@ -29,4 +30,13 @@ export function openOnSite(url: string) {
 /** Runs clicks, typing, scrolling and waits on the page, in order. */
 export function actOnSite(options: { actions?: PageAction[]; waitFor?: string }) {
   return callApi<SiteInfo>('site/act', options)
+}
+
+/** Clicks and key presses on the page after the entry with this id. Only under npm run dev. */
+export function getSiteLog(after: number) {
+  return callApi<{ entries: SiteLogEntry[] }>('site/log', { after })
+}
+
+export function clearSiteLog() {
+  return callApi<object>('site/log/clear', {})
 }

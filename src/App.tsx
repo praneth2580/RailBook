@@ -3,6 +3,8 @@ import { BrowserRouter, Navigate, Route, Routes, matchPath, useLocation, useNavi
 import { SettingsProvider, useSettings } from './core/settings'
 import { HomePage } from './features/home/HomePage'
 import { VaultProvider } from './features/logins/VaultProvider'
+import { SiteAutomations } from './features/site/SiteAutomations'
+import { SitePage } from './features/site/SitePage'
 import { SiteProvider } from './features/site/SiteProvider'
 import { PassengersPage } from './features/passengers/PassengersPage'
 import { PnrPage } from './features/pnr/PnrPage'
@@ -25,6 +27,7 @@ export function App() {
       <VaultProvider>
         <SiteProvider>
           <ToastProvider>
+            <SiteAutomations />
             <BrowserRouter>
               <Shell />
             </BrowserRouter>
@@ -82,6 +85,7 @@ function Shell() {
       <Route path="/pnr" element={<PnrPage />} />
       <Route path="/settings" element={<SettingsPage onShowShortcuts={() => setShortcutsOpen(true)} />} />
       <Route path="/practice" element={<PracticePage />} />
+      {import.meta.env.DEV && <Route path="/dev/site" element={<SitePage />} />}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

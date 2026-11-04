@@ -1,6 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { HUMAN_LEVELS, isHumanLevel, type HumanLevel } from '../src/automation/human'
 import { ApiError } from './apiError'
 import type { FileStore } from './store'
 import type { UiHandler } from './ui'
@@ -15,6 +16,11 @@ export interface ServerOptions {
   scrape: {
     preview(job: unknown, signal: AbortSignal): Promise<object>
     run(job: unknown, signal: AbortSignal): Promise<object>
+  }
+  /** How human the scraping browsers' input looks. Settings › Scraping changes it; it can't be turned off. */
+  human: {
+    get(): HumanLevel
+    set(level: HumanLevel): Promise<void>
   }
   openExternal: (url: string) => Promise<void>
   /** Shown in Settings. */
@@ -31,6 +37,8 @@ export interface ServerOptions {
     extract(schema: unknown): Promise<object>
     open(url: unknown): Promise<object>
     act(options: unknown): Promise<object>
+    /** Every click and key press on the page. Only under npm run dev. */
+    log?: { since(after: unknown): Promise<object>; clear(): Promise<object> } | null
   }
   /** Lets a second launch ask this one to bring its window forward, through the instance file. */
   instanceSecret: string
@@ -109,6 +117,10 @@ function siteApi(site: NonNullable<ServerOptions['site']>) {
     'site/extract': (body: Record<string, unknown>) => site.extract(body.schema),
     'site/open': (body: Record<string, unknown>) => site.open(body.url),
     'site/act': (body: Record<string, unknown>) => site.act(body),
+    ...(site.log && {
+      'site/log': (body: Record<string, unknown>) => site.log!.since(body.after),
+      'site/log/clear': () => site.log!.clear(),
+    }),
   }
 }
 
@@ -141,6 +153,12 @@ export async function startServer(options: ServerOptions): Promise<AppServer> {
     },
     'scrape/preview': (body, signal) => options.scrape.preview(body.job, signal),
     'scrape/run': (body, signal) => options.scrape.run(body.job, signal),
+    'scraping/human': async () => ({ human: options.human.get() }),
+    'scraping/human/set': async (body) => {
+      if (!isHumanLevel(body.human)) throw new ApiError(400, `human must be one of: ${HUMAN_LEVELS.join(', ')}.`)
+      await options.human.set(body.human)
+      return { human: options.human.get() }
+    },
     open: async (body) => {
       await options.openExternal(webAddress(body.url).href)
       return {}

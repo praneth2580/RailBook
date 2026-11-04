@@ -32,8 +32,8 @@ async function site(routes: Record<string, Route>) {
 }
 
 const chrome = findChrome()
-// A short gap keeps the tests quick; the rate limit itself is WRAITH's and tested there.
-const loader = createWraithLoader({ executablePath: chrome ?? '', minDelayMs: 10, timeoutMs: 10_000 })
+// A short gap and fast human input keep the tests quick; the rate limit and the pacing are WRAITH's, tested there.
+const loader = createWraithLoader({ executablePath: chrome ?? '', minDelayMs: 10, timeoutMs: 10_000, human: 'fast' })
 let shop = ''
 let other = ''
 
@@ -87,10 +87,11 @@ beforeAll(async () => {
     '/search': '<form action="/results"><input name="q"><button>Search</button></form>',
     '/results?q=rail': '<h1>Results for rail</h1>',
     '/feed': `<div id="feed"></div><script>
-      let shown = 0
-      const add = () => { for (let i = 0; i < 10; i++) feed.insertAdjacentHTML('beforeend', '<p class="row" style="height:300px">Row ' + shown++ + '</p>') }
+      let shown = 0, loading = false
+      const add = () => { for (let i = 0; i < 10; i++) feed.insertAdjacentHTML('beforeend', '<p class="row" style="height:300px">Row ' + shown++ + '</p>'); loading = false }
       add()
-      addEventListener('scroll', () => { if (shown < 30 && innerHeight + scrollY >= document.body.scrollHeight - 50) setTimeout(add, 100) })</script>`,
+      // Like a real feed, it loads one batch at a time however many scroll events arrive meanwhile.
+      addEventListener('scroll', () => { if (!loading && shown < 30 && innerHeight + scrollY >= document.body.scrollHeight - 50) { loading = true; setTimeout(add, 100) } })</script>`,
   })
 })
 
@@ -291,7 +292,7 @@ describe.skipIf(!chrome)('runJob with WRAITH, rendered pages', { timeout: 60_000
 })
 
 describe('createScrapingEngine', () => {
-  const engine = createScrapingEngine({ executablePath: chrome ?? '', minDelayMs: 10 })
+  const engine = createScrapingEngine({ executablePath: chrome ?? '', minDelayMs: 10, human: 'fast' })
   afterAll(() => engine.close())
   const signal = new AbortController().signal
 

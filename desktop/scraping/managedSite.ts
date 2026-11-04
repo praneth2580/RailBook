@@ -1,9 +1,11 @@
 import { createWraith, type SelectorSchema, type Wraith, type WraithPage } from 'wraithjs'
 import type { Fields } from '../../src/automation/fields'
+import { DEFAULT_HUMAN_LEVEL, type HumanLevel } from '../../src/automation/human'
 import { parseRenderOptions } from '../../src/automation/render'
 import { ApiError } from '../apiError'
 import { assertAllowedUrl } from './guard'
 import { runAction, USER_AGENT } from './loader'
+import { createSiteRecorder } from './siteRecorder'
 
 const SETTLE_MS = 5000
 
@@ -13,7 +15,11 @@ export interface ManagedSiteOptions {
   executablePath: string
   /** Show the browser window. Default true (hidden). */
   headless?: boolean
+  /** How human clicks, typing and scrolling look. Default natural. */
+  human?: HumanLevel
   userAgent?: string
+  /** Log every click and key press on the page, for SitePage. Only under npm run dev. */
+  record?: boolean
 }
 
 export interface SiteInfo {
@@ -41,42 +47,53 @@ function checkUrl(address: string) {
 
 /**
  * Keeps one website open beside the app for its whole run, and lets app code read from and act on it. RailBook runs
- * it as itself: robots.txt is respected, the request says it comes from RailBook, input isn't made to look human, and
- * there are no proxies. The browser opens on first use.
+ * it as itself: robots.txt is respected, the request says it comes from RailBook, and there are no proxies. Input looks
+ * human, at the level `human` sets. The browser opens on first use.
  */
 export function createManagedSite({
   url,
   executablePath,
   headless: initialHeadless = true,
+  human: initialHuman = DEFAULT_HUMAN_LEVEL,
   userAgent = USER_AGENT,
+  record = false,
 }: ManagedSiteOptions) {
   // Refuses a malformed RAILBOOK_SITE_URL now, before anything opens.
   const configuredUrl = assertAllowedUrl(url)
   let headless = initialHeadless
+  let human = initialHuman
   let wraith: Wraith | null = null
   let pending: Promise<WraithPage> | null = null
+  const recorder = record ? createSiteRecorder() : null
+  /** What open and act do is RailBook's own, so the log marks it as the helper's. */
+  const asHelper = <T>(run: () => Promise<T>) => (recorder ? recorder.asHelper(run) : run())
 
-  async function openPage(): Promise<WraithPage> {
+  async function openPage(address: string): Promise<WraithPage> {
     wraith ??= createWraith({
       launch: { executablePath },
       headless,
-      human: 'off',
+      human,
       userAgent,
       // Pictures make no difference to reading the page, but they do when you're watching it.
       blockResources: headless ? ['image', 'font', 'media'] : [],
       network: { timeout: 30_000, retries: 2, respectRobotsTxt: true },
       logger: false,
     })
-    const page = await wraith.open(configuredUrl)
+    if (recorder) await recorder.attach(await wraith.context())
+    const page = await wraith.open(address, { human })
     await page.waitForSettled({ timeout: SETTLE_MS }).catch(() => undefined)
     return page
   }
 
-  /** The open page, opening or reopening it when needed (for example after the window was closed by hand). */
-  async function page(): Promise<WraithPage> {
+  /**
+   * The open page, opening or reopening it when needed (for example after the window was closed by hand). A page that
+   * has to open goes to `address`, by default the configured one.
+   */
+  async function page(address = configuredUrl): Promise<WraithPage> {
     const existing = pending ? await pending.catch(() => null) : null
     if (existing && !existing.raw.isClosed()) return existing
-    pending = openPage()
+    // RailBook opens it, so the log marks its loading as the helper's.
+    pending = asHelper(() => openPage(address))
     // A failed open shouldn't be remembered, so the next call tries again.
     pending.catch(() => {
       pending = null
@@ -109,6 +126,17 @@ export function createManagedSite({
       // Reopen now, so the window appears or disappears without waiting for the next read.
       await page().catch(() => undefined)
     },
+    /** Changes how human input looks. A tab takes the level when it opens, so the page reopens where it is. */
+    async setHuman(next: HumanLevel) {
+      if (next === human) return
+      human = next
+      const current = pending ? await pending.catch(() => null) : null
+      if (!current || current.raw.isClosed()) return
+      const address = current.url()
+      pending = null
+      await current.close().catch(() => undefined)
+      await page(address).catch(() => undefined)
+    },
     /** Opens the page if it isn't already, and reports where it is. */
     async info() {
       try {
@@ -133,15 +161,17 @@ export function createManagedSite({
     /** Navigates the page to another address. */
     async open(address: unknown) {
       if (typeof address !== 'string') throw new ApiError(400, 'Give the address to open.')
-      try {
-        const target = checkUrl(address)
-        const live = await page()
-        await live.goto(target)
-        await live.waitForSettled({ timeout: SETTLE_MS }).catch(() => undefined)
-        return await info(live)
-      } catch (error) {
-        throw asApiError(error)
-      }
+      return asHelper(async () => {
+        try {
+          const target = checkUrl(address)
+          const live = await page()
+          await live.goto(target)
+          await live.waitForSettled({ timeout: SETTLE_MS }).catch(() => undefined)
+          return await info(live)
+        } catch (error) {
+          throw asApiError(error)
+        }
+      })
     },
     /** Runs clicks, typing, scrolling and waits on the page, in order. Same actions as a render job. */
     async act(options: unknown) {
@@ -151,18 +181,28 @@ export function createManagedSite({
       } catch (error) {
         throw new ApiError(400, error instanceof Error ? error.message : String(error))
       }
-      try {
-        const live = await page()
-        for (const [index, action] of (actions.actions ?? []).entries()) await runAction(live, action, index)
-        if (actions.waitFor) {
-          await live.waitFor(actions.waitFor).catch(() => {
-            throw new ApiError(400, `Nothing matched ${actions.waitFor} in time.`)
-          })
+      return asHelper(async () => {
+        try {
+          const live = await page()
+          for (const [index, action] of (actions.actions ?? []).entries()) await runAction(live, action, index)
+          if (actions.waitFor) {
+            await live.waitFor(actions.waitFor).catch(() => {
+              throw new ApiError(400, `Nothing matched ${actions.waitFor} in time.`)
+            })
+          }
+          return await info(live)
+        } catch (error) {
+          throw asApiError(error)
         }
-        return await info(live)
-      } catch (error) {
-        throw asApiError(error)
-      }
+      })
+    },
+    /** The click and key press log, when record is on. */
+    log: recorder && {
+      since: async (after: unknown) => ({ entries: recorder.since(typeof after === 'number' ? after : 0) }),
+      clear: async () => {
+        recorder.clear()
+        return {}
+      },
     },
     close: () => wraith?.close() ?? Promise.resolve(),
   }

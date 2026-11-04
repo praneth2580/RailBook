@@ -23,7 +23,7 @@ export async function runTask(site: Site, taskName: string, options: RunOptions 
   if (!task) throw new Error(`There's no task "${taskName}". The tasks: ${Object.keys(site.tasks).join(', ')}`)
   const baseUrl = assertAllowed(site.baseUrl)
 
-  const wraith = createPoliteWraith({ headed, minDelayMs: site.minDelayMs })
+  const wraith = createPoliteWraith({ headed, minDelayMs: site.minDelayMs, human: site.human })
   const opened: WraithPage[] = []
   const context: TaskContext = {
     baseUrl,

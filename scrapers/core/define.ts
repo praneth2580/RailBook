@@ -1,4 +1,5 @@
 import type { StaticPage, Wraith, WraithPage } from 'wraithjs'
+import type { HumanLevel } from '../../src/automation/human.ts'
 
 /** Everything a task gets to work with. */
 export interface TaskContext {
@@ -28,6 +29,8 @@ export interface Site {
   baseUrl: string
   /** Smallest gap between requests to this site. Default 1000 ms; a robots.txt Crawl-delay can make it longer. */
   minDelayMs?: number
+  /** How human clicks, typing and scrolling look in browser pages: fast, natural or careful. Default natural. */
+  human?: HumanLevel
   tasks: Record<string, Task>
 }
 

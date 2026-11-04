@@ -1,11 +1,13 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useSettings } from '../../core/settings'
 import { clearAppData } from '../../core/storage'
 import type { IrctcLogin, Theme } from '../../core/types'
+import type { HumanLevel } from '../../automation/human'
 import { ALERT_MINUTE_OPTIONS } from '../../platform/alerts'
 import { getAppInfo, openDataFolder, type AppInfo } from '../../platform/appInfo'
 import { getScrapingBrowser, setScrapingBrowser } from '../../platform/devTools'
+import { getHumanLevel, setHumanLevel } from '../../platform/scraping'
 import { Switch, ToggleChips } from '../../ui/controls'
 import { Icon, type IconName } from '../../ui/Icon'
 import { Avatar, ConfirmDialog, Notice, PageHeader } from '../../ui/layout'
@@ -18,6 +20,12 @@ const THEMES: { theme: Theme; label: string; detail: string; icon: IconName }[] 
   { theme: 'system', label: 'System', detail: 'Follow the computer', icon: 'monitor' },
   { theme: 'light', label: 'Light', detail: 'Always light', icon: 'sun' },
   { theme: 'dark', label: 'Dark', detail: 'Always dark', icon: 'moon' },
+]
+
+const HUMAN_INPUT: { level: HumanLevel; label: string; detail: string; icon: IconName }[] = [
+  { level: 'fast', label: 'Fast', detail: 'Quick mouse moves, short pauses', icon: 'bolt' },
+  { level: 'natural', label: 'Natural', detail: 'Paced like an average person', icon: 'user' },
+  { level: 'careful', label: 'Careful', detail: 'Slower and more deliberate', icon: 'timer' },
 ]
 
 function SettingsSection({
@@ -42,6 +50,56 @@ function SettingsSection({
   )
 }
 
+/** How human the scraping browsers' input looks. The launcher keeps the choice, and there's no "off". */
+function ScrapingSection() {
+  const toast = useToast()
+  const [human, setHuman] = useState<HumanLevel | null>(null)
+
+  useEffect(() => {
+    getHumanLevel().then(
+      ({ human: current }) => setHuman(current),
+      (error: unknown) => toast(error instanceof Error ? error.message : String(error)),
+    )
+  }, [toast])
+
+  const change = async (level: HumanLevel) => {
+    const previous = human
+    setHuman(level)
+    try {
+      setHuman((await setHumanLevel(level)).human)
+    } catch (error) {
+      setHuman(previous)
+      toast(error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  return (
+    <SettingsSection
+      id="scraping"
+      title="Scraping"
+      description="How the browser RailBook drives moves the mouse, types and scrolls on rendered pages and the companion website. Input always looks human; pick how quick."
+    >
+      {human && (
+        <div className="theme-options" role="radiogroup" aria-label="Human input">
+          {HUMAN_INPUT.map(({ level, label, detail, icon }) => (
+            <label key={level} className={`option-card${human === level ? ' selected' : ''}`}>
+              <input type="radio" name="human" checked={human === level} onChange={() => void change(level)} />
+              <span className="option-icon">
+                <Icon name={icon} size={18} />
+              </span>
+              <span className="list-text">
+                <strong>{label}</strong>
+                <small>{detail}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+      <small className="muted">Applies from the next page. The companion website reopens where it is.</small>
+    </SettingsSection>
+  )
+}
+
 /** Under npm run dev only; production builds leave it out. */
 function DeveloperSection() {
   const toast = useToast()
@@ -61,7 +119,7 @@ function DeveloperSection() {
     setBusy(true)
     try {
       setHeadless((await setScrapingBrowser(!show)).headless)
-      toast(show ? 'The scraping browser opens in a window from the next page' : 'The scraping browser is hidden again')
+      toast(show ? 'The scraping browser is showing' : 'The scraping browser is hidden again')
     } catch (error) {
       toast(error instanceof Error ? error.message : String(error))
     } finally {
@@ -83,13 +141,23 @@ function DeveloperSection() {
             description={
               busy
                 ? 'Switching…'
-                : "Runs WRAITH's Chrome in a visible window, to watch pages load and actions run, and reopens the companion website the same way when one is set. Start this way with npm run dev -- --headed."
+                : "Opens WRAITH's Chrome in a visible window, to watch rendered pages load and actions run. When RAILBOOK_SITE_URL is set, the companion website reopens visible too, and its window opens first. Plain pages are downloaded without the browser, so only jobs with render settings show up there. Start this way with npm run dev -- --headed."
             }
             checked={!headless}
             onChange={(show) => void change(show)}
           />
         </div>
       )}
+      <SettingRow
+        title="Companion site"
+        description="Run site helpers on the live page, and watch every click and key press on it"
+        action={
+          <Link to="/dev/site" className="button secondary small">
+            <Icon name="terminal" size={16} />
+            Open
+          </Link>
+        }
+      />
     </SettingsSection>
   )
 }
@@ -293,6 +361,8 @@ export function SettingsPage({ onShowShortcuts }: { onShowShortcuts: () => void 
             ))}
           </div>
         </SettingsSection>
+
+        <ScrapingSection />
 
         <SettingsSection
           id="data"

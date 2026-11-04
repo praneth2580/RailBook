@@ -18,7 +18,6 @@ npm run scrape -- scrape --headed --csv --pages 2     # watch it work, save a CS
 ```
 scrapers/
   site.ts          the site: its address, a description and its tasks
-  selectors.ts     every selector for the site, in one place
   tasks/           one file per task
   run.ts           the command line
   core/            the framework: task context, WRAITH setup, address checks, runner, output
@@ -29,7 +28,12 @@ It starts empty: `site.ts` has a placeholder address and one task, `scrape`, tha
 ## Scraping your site
 
 1. In `site.ts`, set `baseUrl` and the description.
-2. Put the site's selectors in `selectors.ts`. Strings are CSS selectors, and `'a@href'` reads an attribute; `href` and `src` come back as absolute addresses. Objects take `selector`, `attr`, `list`, `transform`, `default`, `near` (the value next to a label) and nested `fields`. In an object, put the attribute in `attr`: the `@` shorthand only works in a plain string.
+2. Describe the site's elements in [`src/features/site/selectors.ts`](../src/features/site/selectors.ts), which the app's companion site helpers share. Each is an `ElementSelector`: its `tag`, `id`, `classes`, `attributes` and visible `text` as separate parts, or a whole `css` or `xpath`. In a task, `actionSelector(element)` gives what `page.click` and `page.type` take, and `readField(element, { attr, list, default })` gives a field for `extract`:
+   ```ts
+   import { actionSelector, readField } from '../../src/features/site/elementSelector.ts'
+   import { TRAIN_SEARCH } from '../../src/features/site/selectors.ts'
+   ```
+   Plain fields still work in `extract` too: strings are CSS selectors, and `'a@href'` reads an attribute; `href` and `src` come back as absolute addresses. Objects take `selector`, `attr`, `list`, `transform`, `default`, `near` (the value next to a label) and nested `fields`.
 3. Write the task in `tasks/scrape.ts`, and add more tasks the same way, listing each one in `site.ts`. A task's `run` gets a context and returns the records to save:
 
 | From the context | Use it for |
@@ -45,7 +49,7 @@ A browser page can `click`, `type`, `select`, `press`, `scroll`, `autoScroll`, `
 
 ## How every task runs
 
-Robots.txt is respected, and requests go one at a time, at least a second apart (`minDelayMs` in `site.ts` makes the gap longer). Requests name themselves `RailBook-scrapers/0.1`, and input isn't made to look human. There are no proxies and no rotating user agents.
+Robots.txt is respected, and requests go one at a time, at least a second apart (`minDelayMs` in `site.ts` makes the gap longer). Requests name themselves `RailBook-scrapers/0.1`, and there are no proxies and no rotating user agents. Clicks, typing and scrolling in browser pages look human, at the `human` level in `site.ts`: `fast`, `natural` (the default) or `careful`. It can't be turned off.
 
 The browser is the installed Google Chrome. To use another Chromium-based browser, set `CHROME_PATH` to its path.
 

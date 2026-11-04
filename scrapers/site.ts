@@ -6,5 +6,7 @@ import scrape from './tasks/scrape.ts'
 export default defineSite({
   description: 'TODO: what the site is, and what the tasks collect',
   baseUrl: 'https://example.com/',
+  // How human clicks, typing and scrolling look in browser pages: 'fast', 'natural' or 'careful'.
+  human: 'natural',
   tasks: { scrape },
 })

@@ -40,7 +40,7 @@ describe.skipIf(!chrome)('createManagedSite', { timeout: 60_000 }, () => {
       '/': '<title>Home</title><h1 id="title">Home</h1><p class="count">0</p><button id="more">More</button><a id="away" href="/next">Next</a><script>let n=0;more.onclick=()=>document.querySelector(".count").textContent=++n</script>',
       '/next': '<title>Next page</title><h1 id="title">Next page</h1>',
     })
-    managed = createManagedSite({ url: `${origin}/`, executablePath: chrome ?? '' })
+    managed = createManagedSite({ url: `${origin}/`, executablePath: chrome ?? '', human: 'fast' })
   })
 
   afterAll(() => managed.close())
@@ -66,6 +66,21 @@ describe.skipIf(!chrome)('createManagedSite', { timeout: 60_000 }, () => {
   it('navigates to another address, but refuses invalid ones', async () => {
     expect(await managed.open(`${origin}/next`)).toMatchObject({ url: `${origin}/next`, title: 'Next page' })
     await expect(managed.open('ftp://example.com/')).rejects.toMatchObject({ status: 400 })
+    await managed.open(`${origin}/`)
+  })
+
+  it('changes how human input looks by reopening the page where it is', async () => {
+    await managed.open(`${origin}/`)
+    await managed.act({ actions: [{ type: 'click', selector: '#more' }] })
+    expect(await managed.extract({ count: '.count' })).toEqual({ count: '1' })
+    await managed.setHuman('careful')
+    // A fresh tab, so the count starts again.
+    expect(await managed.extract({ count: '.count' })).toEqual({ count: '0' })
+
+    // Where the page has moved to, not the configured address.
+    await managed.open(`${origin}/next`)
+    await managed.setHuman('fast')
+    expect(await managed.info()).toMatchObject({ url: `${origin}/next`, title: 'Next page' })
     await managed.open(`${origin}/`)
   })
 

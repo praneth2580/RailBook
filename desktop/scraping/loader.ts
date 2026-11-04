@@ -7,12 +7,21 @@ import {
   type WraithPage,
 } from 'wraithjs'
 import type { Fields } from '../../src/automation/fields'
+import { DEFAULT_HUMAN_LEVEL, type HumanLevel } from '../../src/automation/human'
 import { withoutHash, type LoadedPage, type PageLoader } from '../../src/automation/jobs'
 import { globToRegExp, type PageAction, type RenderOptions } from '../../src/automation/render'
 
 export const USER_AGENT = 'RailBook/0.1'
 /** How long a page gets to go quiet after loading or after an action. Pages that never do still carry on. */
 const SETTLE_MS = 5000
+
+/** The tab a visible scraping browser keeps open, so its window is there before the first rendered page. */
+const IDLE_PAGE = `<title>RailBook scraping browser</title>
+<body style="font: 15px/1.5 system-ui, sans-serif; margin: 3em; max-width: 36em; color: #444">
+<h1 style="font-size: 1.3em; color: #111">RailBook's scraping browser</h1>
+<p>Jobs that render pages open each one in a new tab here, run its actions, and close the tab once it's read.</p>
+<p>Plain pages are downloaded without the browser, so they don't show up here. Give a job render settings to watch it.</p>
+</body>`
 
 export interface LoaderOptions {
   /** Chrome, Chromium, Edge or Brave, for pages that need their JavaScript run. */
@@ -23,6 +32,8 @@ export interface LoaderOptions {
   timeoutMs?: number
   /** Hide the browser. Turned off only in development, to watch pages load and actions run. Default true. */
   headless?: boolean
+  /** How human clicks, typing and scrolling look in rendered pages. Default natural. */
+  human?: HumanLevel
 }
 
 function host(url: string) {
@@ -128,7 +139,7 @@ export async function runAction(page: WraithPage, action: PageAction, index: num
 
 /**
  * Loads pages with WRAITH. RailBook runs it as itself: robots.txt is respected, requests say they come from RailBook,
- * input isn't made to look human, and there are no proxies or rotating user agents.
+ * and there are no proxies or rotating user agents. Input in rendered pages looks human, at the level `human` sets.
  */
 export function createWraithLoader({
   executablePath,
@@ -136,11 +147,13 @@ export function createWraithLoader({
   minDelayMs = 1000,
   timeoutMs = 30_000,
   headless = true,
-}: LoaderOptions): PageLoader & { close(): Promise<void> } {
+  human: initialHuman = DEFAULT_HUMAN_LEVEL,
+}: LoaderOptions): PageLoader & { show(): Promise<void>; setHuman(level: HumanLevel): void; close(): Promise<void> } {
+  let human = initialHuman
   const wraith = createWraith({
     launch: { executablePath },
     headless,
-    human: 'off',
+    human,
     userAgent,
     blockResources: ['image', 'font', 'media'],
     network: {
@@ -151,6 +164,20 @@ export function createWraithLoader({
     },
     logger: false,
   })
+
+  // WRAITH launches its browser on the first page and closes rendered tabs once read, so a visible browser holds a
+  // tab of its own to keep the window up. Closed by hand, it comes back with the next rendered page.
+  let idle: Promise<WraithPage> | undefined
+  async function show() {
+    if (headless) return
+    const current = await idle?.catch(() => undefined)
+    if (current && !current.raw.isClosed()) return
+    idle = wraith.newPage().then(async (page) => {
+      await page.raw.setContent(IDLE_PAGE)
+      return page
+    })
+    await idle
+  }
 
   const check = (address: string) => {
     let url: URL
@@ -176,7 +203,9 @@ export function createWraithLoader({
   }
 
   async function loadRendered(url: string, options: RenderOptions, signal?: AbortSignal) {
-    const page = await wraith.newPage()
+    await show()
+    // Each tab takes the level when it opens, so a change applies from the next page on.
+    const page = await wraith.newPage({ human })
     // Closing the tab is how a cancelled run stops whatever the page was doing.
     const onAbort = () => void page.close().catch(() => undefined)
     signal?.addEventListener('abort', onAbort, { once: true })
@@ -211,6 +240,11 @@ export function createWraithLoader({
       signal?.throwIfAborted()
       const url = check(address)
       return render ? loadRendered(url, render, signal) : loadStatic(url, signal)
+    },
+    /** Opens a visible browser's window now, rather than at the first rendered page. Does nothing when hidden. */
+    show,
+    setHuman(level) {
+      human = level
     },
     close: () => wraith.close(),
   }

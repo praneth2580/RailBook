@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import packageJson from '../package.json'
+import { parseHumanLevel } from '../src/automation/human'
 import { findChrome } from './chrome'
 import { claimInstance, focusRunningInstance, releaseInstance } from './instance'
 import { createScrapingEngine } from './scraping/engine'
@@ -25,6 +26,7 @@ export function log(message: string) {
 }
 
 const DEV_HEADLESS_KEY = 'devScrapingHeadless'
+const HUMAN_KEY = 'scrapingHuman'
 
 export interface StartOptions {
   ui: UiHandler
@@ -53,18 +55,24 @@ export async function startApp({ ui, onExit, dev }: StartOptions) {
 
   const store = await openStore(path.join(directory, 'data.json'))
   const headless = dev ? !dev.headed && store.get(DEV_HEADLESS_KEY) !== 'false' : true
-  const scraping = createScrapingEngine({ executablePath: executable, headless })
+  // Read before any browser opens, so the first page already has it. Anything saved that isn't a level means natural.
+  let human = parseHumanLevel(store.get(HUMAN_KEY))
+  const scraping = createScrapingEngine({ executablePath: executable, headless, human })
   if (dev) log(`Scraping browser: ${headless ? 'hidden' : 'visible'}. Switch it in Settings › Developer.`)
 
   // RAILBOOK_SITE_URL keeps one website open beside the app for its whole run; RAILBOOK_SITE_HEADED shows its window.
   let site: ManagedSite | undefined
   if (process.env.RAILBOOK_SITE_URL) {
-    const siteHeadless = !/^(1|true|yes|on)$/i.test(process.env.RAILBOOK_SITE_HEADED ?? '')
+    // Under npm run dev, a visible scraping browser shows the companion site too, as the Developer switch does.
+    const siteHeadless = !/^(1|true|yes|on)$/i.test(process.env.RAILBOOK_SITE_HEADED ?? '') && headless
     try {
       site = createManagedSite({
         url: process.env.RAILBOOK_SITE_URL,
         executablePath: executable,
         headless: siteHeadless,
+        human,
+        // The click and key press log is a development tool, so a packaged RailBook doesn't keep one.
+        record: Boolean(dev),
       })
       log(`Companion site: ${site.configuredUrl} (${siteHeadless ? 'hidden' : 'visible'}).`)
     } catch (error) {
@@ -78,15 +86,26 @@ export async function startApp({ ui, onExit, dev }: StartOptions) {
     ui,
     store,
     scrape: scraping,
-    site: site && { info: site.info, extract: site.extract, open: site.open, act: site.act },
+    site: site && { info: site.info, extract: site.extract, open: site.open, act: site.act, log: site.log },
+    human: {
+      get: () => human,
+      set: async (level) => {
+        human = level
+        scraping.setHuman(level)
+        await site?.setHuman(level)
+        await store.set(HUMAN_KEY, level)
+      },
+    },
     openExternal,
     appInfo: { version: packageJson.version, dataDirectory: directory, browser: executable },
     dev: dev && {
       isHeadless: scraping.isHeadless,
       setHeadless: async (next) => {
         await scraping.setHeadless(next)
-        // The companion site follows the same switch, reopening visible or hidden to match.
-        await site?.setHeadless(next)
+        // The companion site follows the same switch, reopening visible or hidden to match, and its window is the one
+        // to watch. Without one, the scraping browser opens a window of its own, so the switch shows something now.
+        if (site) await site.setHeadless(next)
+        else await scraping.showBrowser()
         await store.set(DEV_HEADLESS_KEY, String(next))
       },
     },
@@ -117,6 +136,8 @@ export async function startApp({ ui, onExit, dev }: StartOptions) {
       profile: path.join(directory, 'browser-profile'),
     })
     log(`RailBook is open, served from ${server.origin} with ${executable}.`)
+    if (dev && !site)
+      void scraping.showBrowser().catch((error) => log(`Scraping browser: ${error instanceof Error ? error.message : error}`))
     if (site)
       void site.info().catch((error) => log(`Companion site: ${error instanceof Error ? error.message : error}`))
     await window.closed
