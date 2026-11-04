@@ -198,6 +198,25 @@ describe('startServer', () => {
     await wasStopped
   })
 
+  it('serves the scraping browser switch only under npm run dev', async () => {
+    const { api } = await setup()
+    expect((await api('dev/scraping-browser', {})).status).toBe(404)
+
+    let headless = true
+    const dev = await setup({
+      dev: {
+        isHeadless: () => headless,
+        setHeadless: async (next) => {
+          headless = next
+        },
+      },
+    })
+    expect(await (await dev.api('dev/scraping-browser', {})).json()).toEqual({ headless: true })
+    expect(await (await dev.api('dev/scraping-browser/set', { headless: false })).json()).toEqual({ headless: false })
+    expect((await dev.api('dev/scraping-browser/set', { headless: 'no' })).status).toBe(400)
+    expect(headless).toBe(false)
+  })
+
   it('opens web addresses, IRCTC included, in the default browser', async () => {
     const { api, opened } = await setup()
 

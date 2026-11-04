@@ -19,6 +19,11 @@ export interface ServerOptions {
   openExternal: (url: string) => Promise<void>
   /** Shown in Settings. */
   appInfo: { version: string; dataDirectory: string; browser: string }
+  /** Only under npm run dev: lets Settings show or hide the scraping browser. Its API doesn't exist otherwise. */
+  dev?: {
+    isHeadless(): boolean
+    setHeadless(headless: boolean): Promise<void>
+  }
   openDataFolder: () => Promise<void>
   /** Lets a second launch ask this one to bring its window forward, through the instance file. */
   instanceSecret: string
@@ -91,6 +96,17 @@ function webAddress(value: unknown) {
   return url
 }
 
+function devApi(dev: NonNullable<ServerOptions['dev']>) {
+  return {
+    'dev/scraping-browser': async () => ({ headless: dev.isHeadless() }),
+    'dev/scraping-browser/set': async (body: Record<string, unknown>) => {
+      if (typeof body.headless !== 'boolean') throw new ApiError(400, 'headless must be true or false.')
+      await dev.setHeadless(body.headless)
+      return { headless: dev.isHeadless() }
+    },
+  }
+}
+
 export async function startServer(options: ServerOptions): Promise<AppServer> {
   const token = randomBytes(32).toString('base64url')
   let launched = false
@@ -114,6 +130,7 @@ export async function startServer(options: ServerOptions): Promise<AppServer> {
       return {}
     },
     'app-info': async () => options.appInfo,
+    ...(options.dev && devApi(options.dev)),
     'open-data-folder': async () => {
       await options.openDataFolder()
       return {}

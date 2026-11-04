@@ -1,4 +1,5 @@
 // Runs RailBook from source: Vite serves the UI with hot reload and loads the launcher's TypeScript directly.
+// npm run dev -- --headed starts the scraping browser visible; Settings › Developer switches it either way.
 import { createServer as createNetServer } from 'node:net'
 import { createServer } from 'vite'
 
@@ -16,7 +17,7 @@ const vite = await createServer({
 })
 try {
   const { startApp } = await vite.ssrLoadModule('/desktop/app.ts')
-  await startApp({ ui: vite.middlewares })
+  await startApp({ ui: vite.middlewares, dev: { headed: process.argv.includes('--headed') } })
 } catch (error) {
   console.error(error instanceof Error ? error.message : error)
   process.exitCode = 1

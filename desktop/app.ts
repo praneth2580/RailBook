@@ -23,14 +23,18 @@ export function log(message: string) {
   }
 }
 
+const DEV_HEADLESS_KEY = 'devScrapingHeadless'
+
 export interface StartOptions {
   ui: UiHandler
+  /** Set by npm run dev. headed starts the scraping browser visible; otherwise the last choice in Settings holds. */
+  dev?: { headed?: boolean }
   /** Runs after everything else has shut down. */
   onExit?: () => Promise<void> | void
 }
 
 /** Runs RailBook until its window closes. */
-export async function startApp({ ui, onExit }: StartOptions) {
+export async function startApp({ ui, onExit, dev }: StartOptions) {
   const directory = dataDirectory()
   mkdirSync(directory, { recursive: true })
   const instanceFile = path.join(directory, 'instance.json')
@@ -47,7 +51,9 @@ export async function startApp({ ui, onExit }: StartOptions) {
   }
 
   const store = await openStore(path.join(directory, 'data.json'))
-  const scraping = createScrapingEngine({ executablePath: executable })
+  const headless = dev ? !dev.headed && store.get(DEV_HEADLESS_KEY) !== 'false' : true
+  const scraping = createScrapingEngine({ executablePath: executable, headless })
+  if (dev) log(`Scraping browser: ${headless ? 'hidden' : 'visible'}. Switch it in Settings › Developer.`)
   const secret = randomBytes(32).toString('base64url')
   let window: AppWindow | null = null
   const server = await startServer({
@@ -56,6 +62,13 @@ export async function startApp({ ui, onExit }: StartOptions) {
     scrape: scraping,
     openExternal,
     appInfo: { version: packageJson.version, dataDirectory: directory, browser: executable },
+    dev: dev && {
+      isHeadless: scraping.isHeadless,
+      setHeadless: async (next) => {
+        await scraping.setHeadless(next)
+        await store.set(DEV_HEADLESS_KEY, String(next))
+      },
+    },
     openDataFolder: () => openFolder(directory),
     instanceSecret: secret,
     focus: async () => window?.focus(),

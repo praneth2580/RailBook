@@ -12,7 +12,8 @@ function parseJob(input: unknown): Job {
 
 /** The scraping API the launcher serves: jobs arrive as JSON from the window, and run here with WRAITH. */
 export function createScrapingEngine(options: LoaderOptions) {
-  const loader = createWraithLoader(options)
+  let loader = createWraithLoader(options)
+  let headless = options.headless ?? true
 
   return {
     /** Reads only the first start page, with the job's loading and extraction settings, to check them while editing. */
@@ -34,6 +35,18 @@ export function createScrapingEngine(options: LoaderOptions) {
       }
     },
     run: async (input: unknown, signal: AbortSignal) => runJob(parseJob(input), loader, { signal }),
+    isHeadless: () => headless,
+    /**
+     * Development only: shows or hides the scraping browser. The current one closes, and the next page opens the new
+     * way, so a run that's still going may lose its open page.
+     */
+    async setHeadless(next: boolean) {
+      if (next === headless) return
+      const previous = loader
+      headless = next
+      loader = createWraithLoader({ ...options, headless: next })
+      await previous.close()
+    },
     close: () => loader.close(),
   }
 }

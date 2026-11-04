@@ -8,10 +8,13 @@ Requires Node 22 and one of Google Chrome, Chromium, Microsoft Edge or Brave. If
 ```sh
 npm install
 npm run dev           # open RailBook from source, with hot reload
+npm run dev -- --headed  # the same, with the scraping browser visible
 npm test              # unit and integration tests; the rendered-page tests run when a browser is installed
 npm run build         # type-check and build the UI
 npm run package       # build a single executable for this computer into release/
 ```
+
+Under `npm run dev`, Settings › Developer has a switch that shows or hides the browser WRAITH scrapes with, without a restart, and remembers the choice between dev runs. Packaged builds always keep it hidden, and leave the switch and its API out.
 
 `npm run package -- --targets node22-win-x64,node22-macos-arm64` builds for other platforms. Windows executables are marked as GUI programs so no console opens with them; add `--console` to keep it for debugging. macOS executables need signing before they run on Apple Silicon, so build those on a Mac.
 

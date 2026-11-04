@@ -329,6 +329,14 @@ describe('createScrapingEngine', () => {
     })
   })
 
+  it('switches between a hidden and a visible browser', async () => {
+    expect(engine.isHeadless()).toBe(true)
+    await engine.setHeadless(false)
+    expect(engine.isHeadless()).toBe(false)
+    await engine.setHeadless(true)
+    expect(engine.isHeadless()).toBe(true)
+  })
+
   it('refuses jobs that are not valid with a 400', async () => {
     await expect(
       engine.run({ name: 'Bad', urls: ['https://www.irctc.co.in/'], extract: { fields: { a: 'a' } } }, signal),

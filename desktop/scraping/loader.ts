@@ -22,6 +22,8 @@ export interface LoaderOptions {
   /** Smallest gap between requests to one site. A robots.txt Crawl-delay can make it longer. */
   minDelayMs?: number
   timeoutMs?: number
+  /** Hide the browser. Turned off only in development, to watch pages load and actions run. Default true. */
+  headless?: boolean
 }
 
 function host(url: string) {
@@ -135,10 +137,11 @@ export function createWraithLoader({
   userAgent = USER_AGENT,
   minDelayMs = 1000,
   timeoutMs = 30_000,
+  headless = true,
 }: LoaderOptions): PageLoader & { close(): Promise<void> } {
   const wraith = createWraith({
     launch: { executablePath },
-    headless: true,
+    headless,
     human: 'off',
     userAgent,
     blockResources: ['image', 'font', 'media'],

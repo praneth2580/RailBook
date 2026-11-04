@@ -5,7 +5,8 @@ import { clearAppData } from '../../core/storage'
 import type { Profile, Theme } from '../../core/types'
 import { ALERT_MINUTE_OPTIONS } from '../../platform/alerts'
 import { getAppInfo, openDataFolder, type AppInfo } from '../../platform/appInfo'
-import { ToggleChips } from '../../ui/controls'
+import { getScrapingBrowser, setScrapingBrowser } from '../../platform/devTools'
+import { Switch, ToggleChips } from '../../ui/controls'
 import { Icon, type IconName } from '../../ui/Icon'
 import { Avatar, ConfirmDialog, Notice, PageHeader } from '../../ui/layout'
 import { useToast } from '../../ui/toast'
@@ -43,6 +44,52 @@ function SettingsSection({
       </div>
       <div className="settings-body">{children}</div>
     </section>
+  )
+}
+
+/** Under npm run dev only; production builds leave it out. */
+function DeveloperSection() {
+  const toast = useToast()
+  const [headless, setHeadless] = useState<boolean | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    void getScrapingBrowser().then(({ headless: current }) => setHeadless(current))
+  }, [])
+
+  const change = async (show: boolean) => {
+    setBusy(true)
+    try {
+      setHeadless((await setScrapingBrowser(!show)).headless)
+      toast(show ? 'The scraping browser opens in a window from the next page' : 'The scraping browser is hidden again')
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <SettingsSection
+      id="developer"
+      title="Developer"
+      description="Only while running npm run dev. Remembered between dev runs."
+    >
+      {headless === null ? null : (
+        <div className="switch-list">
+          <Switch
+            label="Show the scraping browser"
+            description={
+              busy
+                ? 'Switching…'
+                : "Runs WRAITH's Chrome in a visible window, to watch pages load and actions run. Start this way with npm run dev -- --headed."
+            }
+            checked={!headless}
+            onChange={(show) => void change(show)}
+          />
+        </div>
+      )}
+    </SettingsSection>
   )
 }
 
@@ -225,6 +272,8 @@ export function SettingsPage({ onShowShortcuts }: { onShowShortcuts: () => void 
             }
           />
         </SettingsSection>
+
+        {import.meta.env.DEV && <DeveloperSection />}
 
         <SettingsSection id="about" title="About RailBook" description={info ? `Version ${info.version}` : ''}>
           <Notice icon="shield">
