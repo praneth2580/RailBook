@@ -1673,6 +1673,11 @@ textarea:user-invalid {
   pointer-events: none;
 }
 
+/* Full-window flows keep their main buttons bottom-right, so messages sit above that bar. */
+body:has(.focus-footer) .toasts {
+  bottom: 76px;
+}
+
 .toast {
   display: flex;
   gap: 10px;
@@ -2822,6 +2827,146 @@ textarea:user-invalid {
 .theme-swatch.dark {
   color: #e7ecf5;
   background: #141a24;
+}
+
+/* ---------- IRCTC logins ---------- */
+
+.login-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.login-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 14px;
+}
+
+.login-row + .login-row {
+  border-top: 1px solid var(--line);
+}
+
+.login-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.login-main strong {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.login-main .mono,
+.login-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.login-secret,
+.login-actions {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.login-secret .mono {
+  margin-right: 4px;
+  letter-spacing: 0.04em;
+}
+
+.secret-input {
+  position: relative;
+  display: flex;
+}
+
+.secret-input input:not([type='checkbox'], [type='radio']) {
+  padding-right: 40px;
+}
+
+.secret-input .icon-button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+
+.check-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.93rem;
+  cursor: pointer;
+}
+
+.check-field input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+.unlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.unlock.compact {
+  padding: 10px 12px;
+}
+
+.unlock-label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 600;
+}
+
+.unlock-label .icon {
+  color: var(--primary);
+}
+
+.unlock-row {
+  display: flex;
+  gap: 8px;
+}
+
+.unlock-row input:not([type='checkbox'], [type='radio']) {
+  max-width: 280px;
+}
+
+.unlock.compact .unlock-row input:not([type='checkbox'], [type='radio']) {
+  height: 32px;
+  max-width: none;
+}
+
+.unlock .button.small {
+  height: 32px;
+}
+
+.copy-row .secret {
+  letter-spacing: 0.08em;
+}
+
+.copy-hint {
+  font-size: 0.857rem;
+}
+
+.align-start {
+  align-self: flex-start;
 }
 
 /* ---------- Welcome ---------- */

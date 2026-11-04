@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, matchPath, useLocation, useNavigate } from 'react-router-dom'
 import { SettingsProvider, useSettings } from './core/settings'
 import { HomePage } from './features/home/HomePage'
+import { VaultProvider } from './features/logins/VaultProvider'
 import { PassengersPage } from './features/passengers/PassengersPage'
 import { PnrPage } from './features/pnr/PnrPage'
 import { SettingsPage } from './features/settings/SettingsPage'
@@ -20,11 +21,13 @@ import { ToastProvider } from './ui/toast'
 export function App() {
   return (
     <SettingsProvider>
-      <ToastProvider>
-        <BrowserRouter>
-          <Shell />
-        </BrowserRouter>
-      </ToastProvider>
+      <VaultProvider>
+        <ToastProvider>
+          <BrowserRouter>
+            <Shell />
+          </BrowserRouter>
+        </ToastProvider>
+      </VaultProvider>
     </SettingsProvider>
   )
 }

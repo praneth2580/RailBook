@@ -7,7 +7,7 @@ export interface KeyValueStore {
 }
 
 // The launcher keeps these in a plain JSON file in RailBook's data folder. It isn't encrypted.
-const appStore: KeyValueStore = {
+export const appStore: KeyValueStore = {
   get: async (key) => (await callApi<{ value: string | null }>('store/get', { key })).value,
   set: async (key, value) => {
     await callApi('store/set', { key, value })

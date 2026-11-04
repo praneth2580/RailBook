@@ -4,8 +4,7 @@ import path from 'node:path'
 import packageJson from '../package.json'
 import { findChrome } from './chrome'
 import { claimInstance, focusRunningInstance, releaseInstance } from './instance'
-import { fetchPage } from './pages'
-import { createRenderer } from './renderer'
+import { createScrapingEngine } from './scraping/engine'
 import { startServer } from './server'
 import { openStore } from './store'
 import { dataDirectory, openExternal, openFolder } from './system'
@@ -48,14 +47,13 @@ export async function startApp({ ui, onExit }: StartOptions) {
   }
 
   const store = await openStore(path.join(directory, 'data.json'))
-  const renderer = createRenderer(executable)
+  const scraping = createScrapingEngine({ executablePath: executable })
   const secret = randomBytes(32).toString('base64url')
   let window: AppWindow | null = null
   const server = await startServer({
     ui,
     store,
-    fetchPage,
-    render: renderer.render,
+    scrape: scraping,
     openExternal,
     appInfo: { version: packageJson.version, dataDirectory: directory, browser: executable },
     openDataFolder: () => openFolder(directory),
@@ -68,7 +66,7 @@ export async function startApp({ ui, onExit }: StartOptions) {
   const stop = () =>
     (stopping ??= (async () => {
       await window?.close()
-      await renderer.close()
+      await scraping.close()
       await server.close()
       await releaseInstance(instanceFile, secret)
       await onExit?.()

@@ -13,6 +13,7 @@ import { openOfficialPage } from '../../platform/officialPages'
 import { Icon } from '../../ui/Icon'
 import { Avatar, ConfirmDialog, PageHeader, Panel } from '../../ui/layout'
 import { useToast } from '../../ui/toast'
+import { pickLogin, useVault } from '../logins/VaultProvider'
 import { CopyPanel } from '../tatkal/CopyPanel'
 import { ReadinessCard } from '../tatkal/ReadinessCard'
 import { journeyOpensAt } from '../tatkal/tatkalWindow'
@@ -107,7 +108,7 @@ export function TaskDetailPage() {
           <aside className="detail-aside">
             <ReadinessCard journey={journey} onChange={save} />
             <AlertsPanel journey={journey} minutes={settings.alertMinutes} />
-            <CopyPanel journey={journey} passengers={chosen} username={settings.profile.irctcUsername} />
+            <CopyPanel journey={journey} passengers={chosen} />
           </aside>
         )}
       </div>
@@ -232,10 +233,13 @@ function AlertsPanel({ journey, minutes }: { journey: Journey; minutes: number[]
 
 function SummaryPanel({ journey, trainName }: { journey: Journey; trainName: string | null }) {
   const preferences = journey.preferences
+  const vault = useVault()
+  const login = vault.status === 'unlocked' ? pickLogin(vault.logins, journey.loginId) : undefined
+  const loginFact = login?.label ?? (vault.status === 'locked' ? 'Locked' : 'Default login')
 
   return (
     <Panel title="Journey" actions={<Link to={`/tasks/${journey.id}/edit`}>Edit</Link>}>
-      <Facts items={journeyFacts(journey, trainName)} />
+      <Facts items={[...journeyFacts(journey, trainName), ['IRCTC login', loginFact]]} />
       {preferences && (
         <div className="pills">
           {preferences.autoUpgrade && <span className="pill">Auto-upgrade</span>}

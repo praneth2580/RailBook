@@ -1,7 +1,8 @@
 // Packages RailBook as a single executable:
 //   1. Vite builds the UI into dist/.
-//   2. Vite bundles the launcher (desktop/main.ts) into one CommonJS file with every UI file embedded in it.
-//   3. pkg joins that file to a Node.js runtime.
+//   2. Vite bundles the launcher (desktop/main.ts) into one CommonJS file with every UI file embedded in it. Playwright,
+//      which WRAITH drives, stays out: it reads its own files at runtime, so pkg carries it as a package instead.
+//   3. pkg joins that file, Playwright and the bundle's extra chunks to a Node.js runtime.
 //   4. Windows builds are marked as GUI programs, so no console window opens next to the app.
 //
 // Builds for this computer by default. Other targets: npm run package -- --targets node22-win-x64,node22-macos-arm64
@@ -46,15 +47,22 @@ await build({
       load: (id) => (id === '\0railbook-ui' ? `export default ${JSON.stringify(files)}` : null),
     },
   ],
-  // Bundle every dependency, so pkg only has to deal with one plain CommonJS file.
-  ssr: { noExternal: true },
+  // Bundle every dependency except Playwright, which can't be squeezed into one file.
+  ssr: { noExternal: true, external: ['playwright', 'playwright-core'] },
   build: {
     ssr: 'desktop/main.ts',
     outDir: 'build',
     emptyOutDir: true,
     target: 'node22',
     minify: false,
-    rolldownOptions: { output: { format: 'cjs', entryFileNames: 'railbook.cjs' } },
+    rolldownOptions: {
+      output: {
+        format: 'cjs',
+        entryFileNames: 'railbook.cjs',
+        // Runs before the bundle's first require, which is what loads Playwright.
+        banner: await readFile('desktop/inspector-shim.cjs', 'utf8'),
+      },
+    },
   },
 })
 
@@ -63,7 +71,22 @@ await rm('release', { recursive: true, force: true })
 // No bytecode step: it would need to run each target's Node, which fails when building for another platform.
 const pkg = spawnSync(
   path.join('node_modules', '.bin', process.platform === 'win32' ? 'pkg.cmd' : 'pkg'),
-  ['build/railbook.cjs', '--targets', targets, '--out-path', 'release', '--no-bytecode', '--public', '--compress', 'Brotli'],
+  [
+    'build/railbook.cjs',
+    // package.json's "pkg" section lists Playwright's files and the bundle's chunks as assets.
+    '--config',
+    'package.json',
+    '--targets',
+    targets,
+    '--out-path',
+    'release',
+    '--no-bytecode',
+    '--public',
+    '--public-packages',
+    '*',
+    '--compress',
+    'Brotli',
+  ],
   { stdio: 'inherit', shell: process.platform === 'win32' },
 )
 if (pkg.status !== 0) process.exit(pkg.status ?? 1)

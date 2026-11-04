@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useSettings } from '../../core/settings'
 import { clearAppData } from '../../core/storage'
 import type { Profile, Theme } from '../../core/types'
@@ -8,6 +9,8 @@ import { ToggleChips } from '../../ui/controls'
 import { Icon, type IconName } from '../../ui/Icon'
 import { Avatar, ConfirmDialog, Notice, PageHeader } from '../../ui/layout'
 import { useToast } from '../../ui/toast'
+import { LoginsSection } from '../logins/LoginsSection'
+import { useVault } from '../logins/VaultProvider'
 
 const THEMES: { theme: Theme; label: string; detail: string; icon: IconName }[] = [
   { theme: 'system', label: 'System', detail: 'Follow the computer', icon: 'monitor' },
@@ -17,7 +20,6 @@ const THEMES: { theme: Theme; label: string; detail: string; icon: IconName }[] 
 
 const PROFILE_FIELDS: { key: keyof Profile; label: string; type: string; hint?: string }[] = [
   { key: 'name', label: 'Your name', type: 'text' },
-  { key: 'irctcUsername', label: 'IRCTC username', type: 'text', hint: 'Shown in the copy panel' },
   { key: 'mobile', label: 'Mobile', type: 'tel', hint: 'Suggested for new tasks' },
   { key: 'email', label: 'Email', type: 'email' },
 ]
@@ -58,7 +60,9 @@ function SettingRow({ title, description, action }: { title: string; description
 
 export function SettingsPage({ onShowShortcuts }: { onShowShortcuts: () => void }) {
   const { settings, update } = useSettings()
+  const vault = useVault()
   const toast = useToast()
+  const { hash } = useLocation()
   const [profile, setProfile] = useState(settings.profile)
   const [clearing, setClearing] = useState(false)
   const [info, setInfo] = useState<AppInfo | null>(null)
@@ -68,9 +72,14 @@ export function SettingsPage({ onShowShortcuts }: { onShowShortcuts: () => void 
     void getAppInfo().then(setInfo)
   }, [])
 
+  // Other screens link straight to a section, such as /settings#logins.
+  useEffect(() => {
+    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' })
+  }, [hash])
+
   const saveProfile = async (event: FormEvent) => {
     event.preventDefault()
-    await update({ profile: { ...profile, name: profile.name.trim(), irctcUsername: profile.irctcUsername.trim() } })
+    await update({ profile: { ...profile, name: profile.name.trim() } })
     toast('Profile saved')
   }
 
@@ -88,14 +97,16 @@ export function SettingsPage({ onShowShortcuts }: { onShowShortcuts: () => void 
         <SettingsSection
           id="profile"
           title="Profile"
-          description="Used to fill the copy panel and new tasks. RailBook never asks for your IRCTC password."
+          description="Your name, and the mobile number new tasks suggest for the ticket."
         >
           <div className="profile-head">
             <Avatar id="profile" name={profile.name || 'You'} size={44} />
             <span className="list-text">
               <strong>{settings.profile.name || 'Your profile'}</strong>
               <small>
-                {settings.profile.irctcUsername ? `IRCTC · ${settings.profile.irctcUsername}` : 'No IRCTC username yet'}
+                {vault.count === 0
+                  ? 'No IRCTC logins saved yet'
+                  : `${vault.count} IRCTC ${vault.count === 1 ? 'login' : 'logins'} saved`}
               </small>
             </span>
           </div>
@@ -118,6 +129,14 @@ export function SettingsPage({ onShowShortcuts }: { onShowShortcuts: () => void 
               </button>
             </div>
           </form>
+        </SettingsSection>
+
+        <SettingsSection
+          id="logins"
+          title="IRCTC logins"
+          description="The accounts you book with, for the copy panel. Encrypted with a master password before they're saved. RailBook never signs in for you."
+        >
+          <LoginsSection />
         </SettingsSection>
 
         <SettingsSection
@@ -163,7 +182,7 @@ export function SettingsPage({ onShowShortcuts }: { onShowShortcuts: () => void 
         <SettingsSection
           id="data"
           title="Your data"
-          description="Tasks, passengers, PNRs and settings stay on this computer, in a file that isn't encrypted."
+          description="Everything stays on this computer. IRCTC logins are encrypted; tasks, passengers, PNRs and settings are in a file that isn't."
         >
           <SettingRow
             title="Data folder"

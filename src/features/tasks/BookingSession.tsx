@@ -8,7 +8,7 @@ import { Icon } from '../../ui/Icon'
 import { ConfirmDialog, Dialog, Keys, Notice, Panel, useDocumentTitle } from '../../ui/layout'
 import { MOD_KEY, useShortcut } from '../../ui/shortcuts'
 import { extractPnr } from '../pnr/extractPnr'
-import { CopyRow, JourneyCopyRows, PassengerCopyRows } from '../tatkal/CopyPanel'
+import { CopyRow, JourneyCopyRows, LoginCopyRows, PassengerCopyRows } from '../tatkal/CopyPanel'
 import { ReadinessList } from '../tatkal/ReadinessCard'
 import { readinessChecks } from '../tatkal/readiness'
 import { formatCountdown, journeyOpensAt } from '../tatkal/tatkalWindow'
@@ -214,7 +214,6 @@ export function BookingSession({
                             journey={journey}
                             passengers={passengers}
                             practice={practice}
-                            username={settings.profile.irctcUsername}
                             countdown={formatCountdown(opensAt.getTime() - now)}
                             onDone={completeStep}
                             onBooked={finishBooked}
@@ -303,7 +302,6 @@ function StepPanel({
   journey,
   passengers,
   practice,
-  username,
   countdown,
   onDone,
   onBooked,
@@ -313,7 +311,6 @@ function StepPanel({
   journey: Journey
   passengers: Passenger[]
   practice: boolean
-  username: string
   countdown: string
   onDone: () => void
   /** Practice runs finish here too, without a PNR. */
@@ -360,7 +357,7 @@ function StepPanel({
               Open IRCTC
             </button>
           )}
-          {username && <CopyRow label="Username" value={username} />}
+          <LoginCopyRows loginId={journey.loginId} practice={practice} />
           {doneButton}
         </div>
       )

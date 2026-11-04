@@ -3,12 +3,12 @@ A desktop railway booking assistant built with React, TypeScript and Node.js, de
 
 ## Development
 
-Requires Node 22 and one of Google Chrome, Chromium, Microsoft Edge or Brave. If your shell runs an older Node, the npm scripts switch to the version in `.nvmrc` through nvm.
+Requires Node 22 and one of Google Chrome, Chromium, Microsoft Edge or Brave. If your shell runs an older Node, the npm scripts switch to the version in `.nvmrc` through nvm. Scraping drives the installed browser, so there's no need for `npx playwright install`.
 
 ```sh
 npm install
 npm run dev           # open RailBook from source, with hot reload
-npm test              # unit tests; the rendering tests run when a browser is installed
+npm test              # unit and integration tests; the rendered-page tests run when a browser is installed
 npm run build         # type-check and build the UI
 npm run package       # build a single executable for this computer into release/
 ```
@@ -28,13 +28,14 @@ Only the app window can use the server. It gets an `HttpOnly`, `SameSite=Strict`
 
 Data lives in `~/.config/RailBook` on Linux, `~/Library/Application Support/RailBook` on macOS and `%APPDATA%\RailBook` on Windows (`RAILBOOK_DATA_DIR` overrides it): `data.json` for everything the app saves, `browser-profile/` for the window, and `railbook.log`.
 
-`npm run package` builds the UI with Vite, bundles `desktop/main.ts` and its dependencies into one CommonJS file with every UI file embedded, and joins that to a Node runtime with [`@yao-pkg/pkg`](https://github.com/yao-pkg/pkg), the maintained fork of `pkg`.
+`npm run package` builds the UI with Vite, bundles `desktop/main.ts` and its dependencies into one CommonJS file with every UI file embedded, and joins that to a Node runtime with [`@yao-pkg/pkg`](https://github.com/yao-pkg/pkg), the maintained fork of `pkg`. Playwright stays out of the bundle, because it reads its own files at runtime; pkg carries it as a package instead (see `"pkg"` in `package.json`). pkg's Node runtime has no inspector, which Playwright requires when it loads, so `desktop/inspector-shim.cjs` goes at the top of the bundle and stands in for it.
 
 ## Structure
 
 | Path | Purpose |
 |---|---|
-| `desktop` | The launcher: server, browser discovery, app window, headless renderer, data store |
+| `desktop` | The launcher: server, browser discovery, app window, data store |
+| `desktop/scraping` | The scraping engine: loads pages with WRAITH and serves `scrape/preview` and `scrape/run` |
 | `scripts/desktop-dev.mjs` | Runs the launcher from source with Vite serving the UI |
 | `scripts/package-desktop.mjs` | Builds, bundles and packages the executable |
 | `src/core` | Shared types, storage, settings and formatting |
@@ -45,7 +46,7 @@ Data lives in `~/.config/RailBook` on Linux, `~/Library/Application Support/Rail
 | `src/features/tasks` | Booking tasks: list, five-step wizard, detail and the guided booking session |
 | `src/features/tatkal` | Booking window rules, readiness checks, copy panel and practice runs |
 | `src/features` (other) | Passengers, PNR, settings and first-run welcome screens |
-| `src/automation` | General web scraping: polite page fetching, rendering, data extraction, multi-page jobs and change watching |
+| `src/automation` | Scraping jobs: the job format and its validation, pagination, detail pages, crawling, sitemaps, JSON reading and change tracking |
 | `public/data/timetable.json` | Bundled timetable, empty until a dataset is chosen |
 
 ## Screens
@@ -68,12 +69,21 @@ Official pages open in the person's default browser, where they're already signe
 
 ## Scraping and automation
 
-`src/automation` reads public web pages; it isn't tied to any one site. A job is plain JSON: start pages, steps that follow pagination or links, and the fields to extract with CSS selectors. Set `render` on a job, or pass it to `scraper.get`, to read pages after their JavaScript has run, optionally waiting for a selector. `watchJob` compares each run with the last good one and sends a notification when records are new or changed, and `runDueJobs` runs saved jobs on their schedule while the app is open.
+Scraping runs in the launcher on [WRAITH](https://github.com/praneth2580/WRAITH) (`wraithjs`, pinned to an exact beta). It isn't tied to any one site. A job is plain JSON:
 
-Requests go through the launcher, so CORS doesn't apply. Rendering uses a headless browser that starts on first use and skips images, fonts and media; its User-Agent is the browser's own followed by `RailBook/0.1`. The scraper honours robots.txt (including Crawl-delay), waits at least a second between requests to the same host, and retries network errors, 429 and 5xx with backoff. Both the UI and the launcher refuse IRCTC, including after redirects.
+- **Start pages**, or a sitemap whose addresses match a pattern.
+- **Steps** that follow "next" links, open the detail pages a list links to, or crawl a site to a set depth, staying on it unless include and exclude patterns say otherwise.
+- **Fields to extract**, in WRAITH's selector format (`'a@href'`, `{ selector, list }`, `{ near: 'Price' }`, nested fields), one record per page or per repeated element. Or read JSON: the page itself, or the responses a rendered page requested, by dot paths.
+- **`render`**, to load pages in the installed Chrome and run their JavaScript first. It can click (repeatedly, for "Load more"), type, press keys, scroll for more, wait for a selector, and capture the JSON the page fetches.
+
+The window sends jobs to `scrape/preview`, which reads only the first start page, and `scrape/run`. `src/automation/diff.ts` compares a run with the last good one, for spotting new and changed records.
+
+RailBook runs WRAITH as itself: robots.txt (including Crawl-delay) is respected, there's at least a second between requests to one site, failures are retried with backoff, and requests carry RailBook's User-Agent. Human-style input, proxies, rotating user agents and honeypot evasion stay off. IRCTC is refused when a job is saved, before every request and after redirects, and rendered pages can't reach it either, because the browser blocks those requests.
 
 ## Limits
 
 RailBook helps the person booking and does not book for them. It does not automate or scrape IRCTC. Login, CAPTCHA, OTP, payment and submission all happen on the official site, by hand.
 
-Saved passenger details are stored in `data.json`, which is not encrypted.
+Tasks, passengers, PNRs and settings are stored in `data.json`, which is not encrypted.
+
+IRCTC logins (Settings › IRCTC logins) are kept in an encrypted vault instead: AES-256-GCM, with a key derived from your master password by PBKDF2-SHA-256 at 600,000 iterations. Encryption happens in the window, so the launcher and `data.json` only see ciphertext, and the master password is never saved. Forget it and the logins can only be deleted. They unlock once per session and lock again after 15 minutes without use or when RailBook closes. RailBook only copies them for you to paste on the official site, and wipes a copied password from the clipboard after 30 seconds. It never signs in, and logins never reach the scraping engine. The browser's own password saving is off in RailBook's profile, so it keeps no second copy.

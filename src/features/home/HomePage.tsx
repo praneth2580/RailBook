@@ -7,11 +7,13 @@ import { useNow } from '../../core/useNow'
 import { Icon, type IconName } from '../../ui/Icon'
 import { Keys, PageHeader, Panel } from '../../ui/layout'
 import { MOD_KEY } from '../../ui/shortcuts'
+import { useVault } from '../logins/VaultProvider'
 import { TaskTable, WindowHero } from '../tasks/TaskParts'
 import { byWindow, isActive, taskStatus } from '../tasks/tasks'
 
 export function HomePage({ onSearch }: { onSearch: () => void }) {
   const { settings } = useSettings()
+  const vault = useVault()
   const { items: journeys, loaded } = useCollection(journeyCollection)
   const { items: passengers } = useCollection(passengerCollection)
   const { items: pnrs } = useCollection(pnrCollection)
@@ -25,10 +27,10 @@ export function HomePage({ onSearch }: { onSearch: () => void }) {
 
   const setup: { done: boolean; title: string; body: string; to: string; state?: object; icon: IconName }[] = [
     {
-      done: Boolean(settings.profile.irctcUsername),
-      title: 'Add your IRCTC username',
-      body: 'It goes in the copy panel. RailBook never asks for your password.',
-      to: '/settings',
+      done: vault.count > 0,
+      title: 'Save your IRCTC login',
+      body: 'Encrypted, and ready to copy when you sign in.',
+      to: '/settings#logins',
       icon: 'user',
     },
     {

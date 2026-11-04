@@ -3,8 +3,8 @@ import { request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { ApiError } from './apiError'
 import { claimInstance, focusRunningInstance, releaseInstance } from './instance'
-import type { PageRequest } from './pages'
 import { startServer, type AppServer, type ServerOptions } from './server'
 import { embeddedUi } from './ui'
 
@@ -28,8 +28,10 @@ async function setup(overrides: Partial<ServerOptions> = {}) {
       },
       clear: async () => values.clear(),
     },
-    fetchPage: async ({ url }: PageRequest) => ({ url, status: 200, headers: {}, body: `fetched ${url}` }),
-    render: async ({ url, waitFor }: PageRequest) => ({ url, status: 200, headers: {}, body: `rendered after ${waitFor}` }),
+    scrape: {
+      preview: async (job) => ({ previewed: job }),
+      run: async (job) => ({ ran: job }),
+    },
     openExternal: async (url) => {
       opened.push(url)
     },
@@ -132,66 +134,64 @@ describe('startServer', () => {
     expect((await api('store/set', { key: 'settings', value: 5 })).status).toBe(400)
   })
 
-  it('fetches and renders pages', async () => {
+  it('passes scraping jobs to the engine', async () => {
     const { api } = await setup()
-    const request = { url: 'https://example.com/a', headers: { 'User-Agent': 'RailBook/0.1' }, timeoutMs: 5000 }
+    const job = { name: 'Deals', urls: ['https://shop.example/'] }
 
-    expect(await (await api('fetch', request)).json()).toMatchObject({ status: 200, body: 'fetched https://example.com/a' })
-    expect(await (await api('render', { ...request, waitFor: '.item' })).json()).toMatchObject({
-      body: 'rendered after .item',
-    })
+    expect(await (await api('scrape/preview', { job })).json()).toEqual({ previewed: job })
+    expect(await (await api('scrape/run', { job })).json()).toEqual({ ran: job })
   })
 
-  it('checks page requests', async () => {
-    const { api } = await setup()
-
-    expect(await (await api('fetch', { url: 'ftp://example.com/' })).json()).toEqual({
-      error: 'Only http and https addresses work.',
-    })
-    expect((await api('fetch', { url: 'https://example.com/', headers: { Accept: 1 } })).status).toBe(400)
-  })
-
-  it('never fetches IRCTC, even after a redirect', async () => {
+  it("answers with the engine's own status for a job that isn't valid", async () => {
     const { api } = await setup({
-      fetchPage: async () => ({ url: 'https://www.irctc.co.in/nget/train-search', status: 200, headers: {}, body: '' }),
+      scrape: {
+        preview: async () => ({}),
+        run: async () => {
+          throw new ApiError(400, 'The name needs a value.')
+        },
+      },
     })
-
-    const direct = await api('render', { url: 'https://irctc.co.in/' })
-    expect(direct.status).toBe(403)
-    expect(await direct.json()).toEqual({ error: "RailBook doesn't scrape irctc.co.in." })
-    expect(await (await api('fetch', { url: 'https://short.example/x' })).json()).toEqual({
-      error: "RailBook doesn't scrape www.irctc.co.in.",
-    })
+    const response = await api('scrape/run', { job: {} })
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: 'The name needs a value.' })
   })
 
   it('reports a site that fails as 502', async () => {
     const { api } = await setup({
-      fetchPage: async () => {
-        throw new Error('getaddrinfo ENOTFOUND example.invalid')
+      scrape: {
+        preview: async () => {
+          throw new Error("Couldn't read example.invalid. getaddrinfo ENOTFOUND example.invalid")
+        },
+        run: async () => ({}),
       },
     })
-    const response = await api('fetch', { url: 'https://example.invalid/' })
+    const response = await api('scrape/preview', { job: {} })
     expect(response.status).toBe(502)
-    expect(await response.json()).toEqual({ error: 'getaddrinfo ENOTFOUND example.invalid' })
+    expect(await response.json()).toEqual({
+      error: "Couldn't read example.invalid. getaddrinfo ENOTFOUND example.invalid",
+    })
   })
 
-  it('stops loading a page when the app stops waiting for it', async () => {
+  it('stops a run when the app stops waiting for it', async () => {
     let stopped: () => void = () => undefined
     const wasStopped = new Promise<void>((resolve) => {
       stopped = resolve
     })
     const { api } = await setup({
-      fetchPage: (_request, signal) =>
-        new Promise((_resolve, reject) => {
-          signal.addEventListener('abort', () => {
-            stopped()
-            reject(signal.reason)
-          })
-        }),
+      scrape: {
+        preview: async () => ({}),
+        run: (_job, signal) =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => {
+              stopped()
+              reject(signal.reason)
+            })
+          }),
+      },
     })
 
     const controller = new AbortController()
-    const call = api('fetch', { url: 'https://example.com/slow' }, { signal: controller.signal }).catch(() => undefined)
+    const call = api('scrape/run', { job: {} }, { signal: controller.signal }).catch(() => undefined)
     await new Promise((resolve) => setTimeout(resolve, 50))
     controller.abort()
     await call

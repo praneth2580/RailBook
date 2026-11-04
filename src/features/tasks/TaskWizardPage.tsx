@@ -22,6 +22,8 @@ import { Icon } from '../../ui/Icon'
 import { Avatar, Keys, Notice, Panel, useDocumentTitle } from '../../ui/layout'
 import { MOD_KEY, useShortcut } from '../../ui/shortcuts'
 import { useToast } from '../../ui/toast'
+import { LoginPicker } from '../logins/LoginPicker'
+import { pickLogin, useVault } from '../logins/VaultProvider'
 import { PassengerDialog, describePassenger } from '../passengers/PassengerDialog'
 import { bookingOpensAt } from '../tatkal/tatkalWindow'
 import { Facts, PAYMENT_DETAILS, RouteLine } from './TaskParts'
@@ -72,6 +74,7 @@ interface TaskForm {
   passengerIds: string[]
   preferences: BookingPreferences
   paymentMethod: PaymentMethod
+  loginId?: string
 }
 
 function initialForm(journey: Journey | undefined, passengers: Passenger[], mobile: string): TaskForm {
@@ -93,6 +96,7 @@ function initialForm(journey: Journey | undefined, passengers: Passenger[], mobi
       mobile,
     },
     paymentMethod: journey?.paymentMethod ?? 'UPI',
+    loginId: journey?.loginId,
   }
 }
 
@@ -500,6 +504,9 @@ function PreferencesStep({ form, update }: StepProps) {
           />
         </div>
       </Panel>
+      <Panel title="IRCTC login">
+        <LoginPicker value={form.loginId} onChange={(loginId) => update({ loginId })} />
+      </Panel>
       <Panel title="Ticket delivery">
         <label className="field narrow">
           <span>Mobile number for the ticket</span>
@@ -581,6 +588,8 @@ function ReviewStep({
 }) {
   const trainName = useTrainName(form.trainNumber)
   const chosen = passengers.filter(({ id }) => form.passengerIds.includes(id))
+  const vault = useVault()
+  const login = vault.status === 'unlocked' ? pickLogin(vault.logins, form.loginId) : undefined
   const { autoUpgrade, confirmedBerthsOnly, travelInsurance, mobile } = form.preferences
   const preferences = [
     autoUpgrade && 'Auto-upgrade',
@@ -628,6 +637,9 @@ function ReviewStep({
             ))
           )}
           {mobile && <span className="pill">Ticket to {mobile}</span>}
+          <span className="pill">
+            {login ? `Login: ${login.label}` : form.loginId ? 'Chosen login' : 'Default login'}
+          </span>
         </div>
       </ReviewSection>
       <ReviewSection title="Payment" onEdit={() => goTo(3)}>

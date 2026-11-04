@@ -1,3 +1,5 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import path from 'node:path'
 import { launchChrome, waitForChrome, type Chrome } from './chrome'
 
 const WINDOW_FLAGS = [
@@ -41,8 +43,28 @@ async function findPage(chrome: Chrome, origin: string, timeoutMs = 10_000) {
   throw new Error("The RailBook window didn't open.")
 }
 
+/**
+ * Turns off the browser's own password saving in RailBook's profile. RailBook keeps IRCTC logins in its encrypted
+ * vault, and the browser offering to save them, or the master password, would keep a second copy outside it.
+ */
+export async function preparePreferences(profile: string) {
+  const file = path.join(profile, 'Default', 'Preferences')
+  let preferences: Record<string, any> = {}
+  try {
+    preferences = JSON.parse(await readFile(file, 'utf8'))
+  } catch {
+    // A new profile, or one the browser will rebuild.
+  }
+  preferences.credentials_enable_service = false
+  preferences.credentials_enable_autosignin = false
+  preferences.profile = { ...preferences.profile, password_manager_enabled: false }
+  await mkdir(path.dirname(file), { recursive: true })
+  await writeFile(file, JSON.stringify(preferences))
+}
+
 /** Opens the UI in a browser window without tabs or an address bar, so it looks like a desktop app. */
 export async function openAppWindow(executable: string, { url, origin, profile }: WindowOptions): Promise<AppWindow> {
+  await preparePreferences(profile)
   const chrome = launchChrome(executable, [`--user-data-dir=${profile}`, `--app=${url}`, ...WINDOW_FLAGS])
   try {
     await waitForChrome(chrome)

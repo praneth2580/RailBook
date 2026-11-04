@@ -1,22 +1,21 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { isBlockedHost } from '../src/automation/blockedHosts'
-import type { PageRequest, PageResponse } from './pages'
+import { ApiError } from './apiError'
 import type { FileStore } from './store'
 import type { UiHandler } from './ui'
 
 // Store values hold whole collections, such as a job's saved records, so allow large bodies.
 const MAX_BODY_BYTES = 20 * 1024 * 1024
-const MAX_TIMEOUT_MS = 120_000
-
-type PageLoader = (request: PageRequest, signal: AbortSignal) => Promise<PageResponse>
 
 export interface ServerOptions {
   ui: UiHandler
   store: FileStore
-  fetchPage: PageLoader
-  render: PageLoader
+  /** Runs scraping jobs, which arrive as JSON. Throws ApiError for a job that isn't valid. */
+  scrape: {
+    preview(job: unknown, signal: AbortSignal): Promise<object>
+    run(job: unknown, signal: AbortSignal): Promise<object>
+  }
   openExternal: (url: string) => Promise<void>
   /** Shown in Settings. */
   appInfo: { version: string; dataDirectory: string; browser: string }
@@ -31,15 +30,6 @@ export interface AppServer {
   /** Works once: opening it gives the app window its session cookie. */
   launchUrl: string
   close(): Promise<void>
-}
-
-class ApiError extends Error {
-  readonly status: number
-
-  constructor(status: number, message: string) {
-    super(message)
-    this.status = status
-  }
 }
 
 function sameSecret(given: unknown, expected: string) {
@@ -96,24 +86,9 @@ function webAddress(value: unknown) {
     if (error instanceof ApiError) throw error
     throw new ApiError(400, `Not a web address: ${String(value)}`)
   }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new ApiError(400, 'Only http and https addresses work.')
+  if (url.protocol !== 'http:' && url.protocol !== 'https:')
+    throw new ApiError(400, 'Only http and https addresses work.')
   return url
-}
-
-function pageRequest(body: Record<string, unknown>): PageRequest {
-  const url = webAddress(body.url)
-  if (isBlockedHost(url.hostname)) throw new ApiError(403, `RailBook doesn't scrape ${url.hostname}.`)
-  const headers = body.headers ?? {}
-  if (typeof headers !== 'object' || headers === null || Object.values(headers).some((v) => typeof v !== 'string')) {
-    throw new ApiError(400, 'headers must map names to text.')
-  }
-  const timeoutMs = typeof body.timeoutMs === 'number' ? Math.min(Math.max(body.timeoutMs, 1000), MAX_TIMEOUT_MS) : 15_000
-  return {
-    url: url.href,
-    headers: headers as Record<string, string>,
-    timeoutMs,
-    waitFor: body.waitFor === undefined || body.waitFor === null ? undefined : text(body.waitFor, 'waitFor'),
-  }
 }
 
 export async function startServer(options: ServerOptions): Promise<AppServer> {
@@ -121,14 +96,6 @@ export async function startServer(options: ServerOptions): Promise<AppServer> {
   let launched = false
   let host = ''
   let cookieName = ''
-
-  async function loadPage(load: PageLoader, body: Record<string, unknown>, signal: AbortSignal) {
-    const page = await load(pageRequest(body), signal)
-    // A redirect can end up somewhere blocked, so don't hand that page over.
-    const finalHost = new URL(page.url).hostname
-    if (isBlockedHost(finalHost)) throw new ApiError(403, `RailBook doesn't scrape ${finalHost}.`)
-    return page
-  }
 
   const api: Record<string, (body: Record<string, unknown>, signal: AbortSignal) => Promise<object>> = {
     'store/get': async (body) => ({ value: options.store.get(text(body.key, 'key')) }),
@@ -140,8 +107,8 @@ export async function startServer(options: ServerOptions): Promise<AppServer> {
       await options.store.clear()
       return {}
     },
-    fetch: (body, signal) => loadPage(options.fetchPage, body, signal),
-    render: (body, signal) => loadPage(options.render, body, signal),
+    'scrape/preview': (body, signal) => options.scrape.preview(body.job, signal),
+    'scrape/run': (body, signal) => options.scrape.run(body.job, signal),
     open: async (body) => {
       await options.openExternal(webAddress(body.url).href)
       return {}
@@ -185,7 +152,10 @@ export async function startServer(options: ServerOptions): Promise<AppServer> {
         return send(response, 403, 'This link has been used. Open RailBook from its launcher.')
       }
       launched = true
-      response.writeHead(302, { 'Set-Cookie': `${cookieName}=${token}; HttpOnly; SameSite=Strict; Path=/`, Location: '/' })
+      response.writeHead(302, {
+        'Set-Cookie': `${cookieName}=${token}; HttpOnly; SameSite=Strict; Path=/`,
+        Location: '/',
+      })
       return response.end()
     }
 

@@ -58,6 +58,8 @@ export interface Journey {
   to: string
   boardingStation: string
   passengerIds: string[]
+  /** The IRCTC login to book with. The default login when it's missing. */
+  loginId?: string
   /** Ids of the readiness checks the person has confirmed by hand. */
   confirmedChecks: string[]
   // Optional because journeys saved before booking tasks existed don't have them.
@@ -82,8 +84,23 @@ export interface Train {
 
 export type Theme = 'system' | 'light' | 'dark'
 
+/** One IRCTC account. Saved only inside the encrypted login vault. */
+export interface IrctcLogin {
+  id: string
+  /** Whose account it is, e.g. "Mine" or "Dad". */
+  label: string
+  username: string
+  password: string
+  /** The mobile number and email registered on the account, where OTPs arrive. */
+  mobile: string
+  email: string
+  note: string
+  isDefault: boolean
+}
+
 export interface Profile {
   name: string
+  /** Only for profiles saved before logins moved to the vault, which takes it over. */
   irctcUsername: string
   mobile: string
   email: string

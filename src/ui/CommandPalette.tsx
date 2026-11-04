@@ -5,6 +5,7 @@ import { formatJourneyDate } from '../core/format'
 import { useSettings } from '../core/settings'
 import { useCollection } from '../core/storage'
 import type { Theme } from '../core/types'
+import { useVault } from '../features/logins/VaultProvider'
 import { describePassenger } from '../features/passengers/PassengerDialog'
 import { Icon, type IconName } from './Icon'
 import { Keys } from './layout'
@@ -49,6 +50,7 @@ export function CommandPalette({
 }) {
   const navigate = useNavigate()
   const { update } = useSettings()
+  const vault = useVault()
   const { items: journeys } = useCollection(journeyCollection)
   const { items: passengers } = useCollection(passengerCollection)
   const dialog = useRef<HTMLDialogElement>(null)
@@ -102,6 +104,10 @@ export function CommandPalette({
       keys: [MOD_KEY, ','],
       run: go('/settings'),
     },
+    { id: 'logins', group: 'Go to', label: 'IRCTC logins', icon: 'key', run: go('/settings#logins') },
+    ...(vault.status === 'unlocked'
+      ? [{ id: 'lock-logins', group: 'Actions', label: 'Lock IRCTC logins', icon: 'lock' as const, run: vault.lock }]
+      : []),
     ...THEME_COMMANDS.map(({ theme, label, icon }) => ({
       id: `theme:${theme}`,
       group: 'Appearance',

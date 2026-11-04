@@ -1,88 +1,119 @@
-// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { runJob, type Job } from './jobs'
-import { testScraper } from './testSite'
+import { extractJson, getPath, validateJob } from './jobs'
 
-const SHOP = {
-  'https://shop.example/list?page=1':
-    '<article><a href="/p/1">One</a></article><article><a href="/p/2">Two</a></article><a class="next" href="/list?page=2">Next</a>',
-  'https://shop.example/list?page=2': '<article><a href="/p/3">Three</a></article><a class="next" href="/list?page=3">Next</a>',
-  'https://shop.example/list?page=3': '<article><a href="/p/4">Four</a></article><a class="next" href="/list?page=1">Again</a>',
-  'https://shop.example/p/1': '<h1>One</h1><span class="price">10</span>',
-  'https://shop.example/p/3': '<h1>Three</h1><span class="price">30</span>',
-  'https://shop.example/p/4': '<h1>Four</h1><span class="price">40</span>',
-}
+describe('getPath and extractJson', () => {
+  const body = {
+    data: {
+      items: [
+        { name: 'Tea', price: { amount: 120 } },
+        { name: 'Coffee', price: { amount: 150 } },
+      ],
+    },
+  }
 
-const listing = { each: 'article', fields: { name: 'a', link: { selector: 'a', attr: 'href' } } }
+  it('reads dot paths, array indexes included', () => {
+    expect(getPath(body, 'data.items.1.price.amount')).toBe(150)
+    expect(getPath(body, 'data.missing.x')).toBeUndefined()
+  })
 
-function job(overrides: Partial<Job>): Job {
-  return { id: 'job', name: 'Shop', urls: ['https://shop.example/list?page=1'], steps: [], extract: listing, ...overrides }
-}
-
-describe('runJob', () => {
-  it('extracts one record per matching element', async () => {
-    const run = await runJob(job({}), testScraper(SHOP).scraper)
-
-    expect(run.records).toEqual([
-      { url: 'https://shop.example/list?page=1', data: { name: 'One', link: 'https://shop.example/p/1' } },
-      { url: 'https://shop.example/list?page=1', data: { name: 'Two', link: 'https://shop.example/p/2' } },
+  it('maps each item to fields, or keeps items whole', () => {
+    expect(
+      extractJson([body], { each: 'data.items', fields: { name: 'name', price: 'price.amount', sku: 'sku' } }),
+    ).toEqual([
+      { name: 'Tea', price: 120, sku: null },
+      { name: 'Coffee', price: 150, sku: null },
     ])
-    expect(run.errors).toEqual([])
-    expect(run.pages).toBe(1)
+    expect(extractJson([[1, 2]], {})).toEqual([{ value: 1 }, { value: 2 }])
+  })
+})
+
+describe('validateJob', () => {
+  const valid = {
+    name: '  Deals ',
+    urls: ['https://shop.example/deals', ''],
+    steps: [{ type: 'paginate', next: 'a.next', maxPages: 3 }],
+    extract: {
+      each: 'article',
+      fields: {
+        title: 'h2',
+        link: { selector: 'a', attr: 'href', extra: 1 },
+        tags: { selector: '.tag', list: true },
+        price: { near: 'Price' },
+        seller: { selector: '.seller', fields: { name: '.name', url: 'a@href' } },
+      },
+    },
+    key: 'link',
+    everyMinutes: 60,
+    unknown: 'dropped',
+  }
+
+  it('keeps only what it understands', () => {
+    const { job, errors } = validateJob(valid)
+    expect(errors).toEqual([])
+    expect(job).toMatchObject({
+      name: 'Deals',
+      urls: ['https://shop.example/deals'],
+      extract: {
+        each: 'article',
+        fields: {
+          title: 'h2',
+          link: { selector: 'a', attr: 'href' },
+          tags: { selector: '.tag', list: true },
+          price: { near: 'Price' },
+          seller: { selector: '.seller', fields: { name: '.name', url: 'a@href' } },
+        },
+      },
+      key: 'link',
+      everyMinutes: 60,
+    })
+    expect(job && 'unknown' in job).toBe(false)
+    expect(job?.extract.fields && 'extra' in (job.extract.fields.link as object)).toBe(false)
+    expect(job?.id).toMatch(/[0-9a-f-]{36}/)
   })
 
-  it('follows next links up to maxPages', async () => {
-    const run = await runJob(job({ steps: [{ type: 'paginate', next: 'a.next', maxPages: 2 }] }), testScraper(SHOP).scraper)
-    expect(run.records.map(({ data }) => data.name)).toEqual(['One', 'Two', 'Three'])
-  })
-
-  it("doesn't loop back to pages it has already read", async () => {
-    const run = await runJob(job({ steps: [{ type: 'paginate', next: 'a.next', maxPages: 10 }] }), testScraper(SHOP).scraper)
-    expect(run.records.map(({ data }) => data.name)).toEqual(['One', 'Two', 'Three', 'Four'])
-    expect(run.pages).toBe(3)
-  })
-
-  it('reads the pages that links lead to, and keeps going past ones that fail', async () => {
-    const run = await runJob(
-      job({
-        steps: [
-          { type: 'paginate', next: 'a.next', maxPages: 2 },
-          { type: 'follow', links: 'article a', max: 2 },
-        ],
-        extract: { fields: { name: 'h1', price: '.price' } },
-      }),
-      testScraper(SHOP).scraper,
-    )
-
-    expect(run.records).toEqual([
-      { url: 'https://shop.example/p/1', data: { name: 'One', price: '10' } },
-      { url: 'https://shop.example/p/3', data: { name: 'Three', price: '30' } },
+  it('lists every problem at once', () => {
+    const { errors } = validateJob({
+      name: '',
+      urls: ['ftp://x.example/', 'https://www.irctc.co.in/'],
+      steps: [{ type: 'teleport' }],
+      extract: { fields: {} },
+      key: 'missing',
+      everyMinutes: 1,
+    })
+    expect(errors).toEqual([
+      'The name needs a value.',
+      'Start page 1 must start with http or https.',
+      'Step 1 has an unknown type.',
+      'Add at least one field to extract.',
+      'The schedule must be a whole number from 5 to 10080.',
     ])
-    expect(run.errors).toEqual([{ url: 'https://shop.example/p/2', message: 'shop.example answered 404.' }])
   })
 
-  it('stops at the page limit and says so', async () => {
-    const pagesRead: string[] = []
-    const run = await runJob(job({ steps: [{ type: 'paginate', next: 'a.next', maxPages: 10 }] }), testScraper(SHOP).scraper, {
-      pageLimit: 2,
-      onPage: (url) => pagesRead.push(url),
+  it('refuses IRCTC and checks render actions', () => {
+    expect(validateJob({ ...valid, urls: ['https://www.irctc.co.in/'] }).errors).toEqual([
+      "RailBook doesn't scrape www.irctc.co.in.",
+    ])
+    expect(validateJob({ ...valid, render: { actions: [{ type: 'click' }] } }).errors).toEqual([
+      "Action 1's selector needs a value.",
+    ])
+  })
+
+  it('needs every field to look for something', () => {
+    expect(validateJob({ ...valid, extract: { fields: { title: { list: true } } }, key: undefined }).errors).toEqual([
+      'The field title needs a selector, text or label to look for.',
+    ])
+  })
+
+  it('needs the key to be one of the fields', () => {
+    expect(validateJob({ ...valid, key: 'cost' }).errors).toEqual(['The record key must be one of the fields.'])
+  })
+
+  it('accepts a sitemap in place of start pages', () => {
+    const { job } = validateJob({
+      ...valid,
+      urls: [],
+      sitemap: { url: 'https://shop.example/sitemap.xml', match: '*/deals/*', max: 20 },
     })
-
-    expect(pagesRead).toEqual(['https://shop.example/list?page=1', 'https://shop.example/list?page=2'])
-    expect(run.errors).toEqual([{ url: 'https://shop.example/list?page=3', message: 'Stopped at the 2-page limit.' }])
-  })
-
-  it('renders every page when the job asks for it', async () => {
-    const { scraper, rendered } = testScraper(SHOP)
-    await runJob(job({ render: true, steps: [{ type: 'paginate', next: 'a.next', maxPages: 2 }] }), scraper)
-    expect(rendered.map(({ url }) => url)).toEqual(['https://shop.example/list?page=1', 'https://shop.example/list?page=2'])
-  })
-
-  it('rejects when cancelled', async () => {
-    const controller = new AbortController()
-    controller.abort()
-    await expect(runJob(job({}), testScraper(SHOP).scraper, { signal: controller.signal })).rejects.toMatchObject({
-      name: 'AbortError',
-    })
+    expect(job?.sitemap).toEqual({ url: 'https://shop.example/sitemap.xml', match: '*/deals/*', max: 20 })
   })
 })
