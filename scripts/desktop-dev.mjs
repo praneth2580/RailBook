@@ -19,6 +19,12 @@ const hmrPort = await new Promise((resolve) => {
 const vite = await createServer({
   server: { middlewareMode: true, hmr: { host: '127.0.0.1', port: hmrPort } },
   appType: 'spa',
+  // The IRCTC test login, for the UI's "Login with credentials" helper. Set here and not in vite.config.ts, so a build
+  // never bakes them into the bundle.
+  define: {
+    'import.meta.env.IRCTC_LOGIN_USERNAME': JSON.stringify(process.env.IRCTC_LOGIN_USERNAME ?? ''),
+    'import.meta.env.IRCTC_LOGIN_PASSWORD': JSON.stringify(process.env.IRCTC_LOGIN_PASSWORD ?? ''),
+  },
 })
 try {
   const { startApp } = await vite.ssrLoadModule('/desktop/app.ts')

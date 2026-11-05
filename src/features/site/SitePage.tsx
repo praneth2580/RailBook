@@ -113,6 +113,7 @@ export function SitePage() {
       const result = await helper(site)
       toast(result === undefined ? `${name}: done` : `${name}: done, it returned ${JSON.stringify(result)}`)
     } catch (error) {
+      console.error(`${name}:`, error)
       toast(`${name}: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setRunning(null)

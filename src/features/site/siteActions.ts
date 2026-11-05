@@ -130,9 +130,11 @@ export async function loginIfNot(site: Site, username: string, password: string)
 }
 
 export async function loginWithTestingCredentials(site: Site) {
-  const username = process.env.RAILBOOK_LOGIN_USERNAME
-  const password = process.env.RAILBOOK_LOGIN_PASSWORD
-  if (!username || !password) throw new Error('RAILBOOK_LOGIN_USERNAME and RAILBOOK_LOGIN_PASSWORD must be set.')
+  // Only npm run dev provides these (see scripts/desktop-dev.mjs); a built app has neither.
+  const username: string | undefined = import.meta.env.IRCTC_LOGIN_USERNAME
+  const password: string | undefined = import.meta.env.IRCTC_LOGIN_PASSWORD
+  console.log('Logging in with testing credentials', { username })
+  if (!username || !password) throw new Error('Set IRCTC_LOGIN_USERNAME and IRCTC_LOGIN_PASSWORD in .env.local, then restart npm run dev.')
 
   await loginIfNot(site, username, password);
     

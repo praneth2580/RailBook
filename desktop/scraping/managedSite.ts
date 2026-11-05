@@ -63,6 +63,7 @@ export function createManagedSite({
   let headless = initialHeadless
   let human = initialHuman
   let wraith: Wraith | null = null
+  let context: Awaited<ReturnType<Wraith['context']>> | null = null
   let pending: Promise<WraithPage> | null = null
   const recorder = record ? createSiteRecorder() : null
   /** What open and act do is RailBook's own, so the log marks it as the helper's. */
@@ -79,7 +80,11 @@ export function createManagedSite({
       network: { timeout: 30_000, retries: 2, respectRobotsTxt: true },
       logger: false,
     })
-    if (recorder) await recorder.attach(await wraith.context())
+    // Every page opens in a new browser context, so nothing a site stored before (cookies, local storage, IndexedDB,
+    // cache, service workers) is left. Closing the old one makes WRAITH start a fresh one, in the same browser.
+    await context?.close().catch(() => undefined)
+    context = await wraith.context()
+    if (recorder) await recorder.attach(context)
     const page = await wraith.open(address, { human })
     await page.waitForSettled({ timeout: SETTLE_MS }).catch(() => undefined)
     return page
@@ -87,11 +92,11 @@ export function createManagedSite({
 
   /**
    * The open page, opening or reopening it when needed (for example after the window was closed by hand). A page that
-   * has to open goes to `address`, by default the configured one.
+   * has to open goes to `address`, by default the configured one. `fresh` opens it again even if it's already open.
    */
-  async function page(address = configuredUrl): Promise<WraithPage> {
+  async function page(address = configuredUrl, fresh = false): Promise<WraithPage> {
     const existing = pending ? await pending.catch(() => null) : null
-    if (existing && !existing.raw.isClosed()) return existing
+    if (existing && !existing.raw.isClosed() && !fresh) return existing
     // RailBook opens it, so the log marks its loading as the helper's.
     pending = asHelper(() => openPage(address))
     // A failed open shouldn't be remembered, so the next call tries again.
@@ -158,15 +163,13 @@ export function createManagedSite({
         throw asApiError(error)
       }
     },
-    /** Navigates the page to another address. */
+    /** Opens another address, starting clean: cookies and everything else sites stored are gone (see openPage). */
     async open(address: unknown) {
       if (typeof address !== 'string') throw new ApiError(400, 'Give the address to open.')
       return asHelper(async () => {
         try {
           const target = checkUrl(address)
-          const live = await page()
-          await live.goto(target)
-          await live.waitForSettled({ timeout: SETTLE_MS }).catch(() => undefined)
+          const live = await page(target, true)
           return await info(live)
         } catch (error) {
           throw asApiError(error)

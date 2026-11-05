@@ -39,6 +39,9 @@ describe.skipIf(!chrome)('createManagedSite', { timeout: 60_000 }, () => {
     origin = await site({
       '/': '<title>Home</title><h1 id="title">Home</h1><p class="count">0</p><button id="more">More</button><a id="away" href="/next">Next</a><script>let n=0;more.onclick=()=>document.querySelector(".count").textContent=++n</script>',
       '/next': '<title>Next page</title><h1 id="title">Next page</h1>',
+      '/remember': '<title>Remember</title><script>document.cookie="seen=1";localStorage.setItem("seen","1")</script>',
+      '/stored':
+        '<title>Stored</title><p id="cookie"></p><p id="local"></p><script>cookie.textContent=document.cookie||"none";local.textContent=localStorage.getItem("seen")??"none"</script>',
     })
     managed = createManagedSite({ url: `${origin}/`, executablePath: chrome ?? '', human: 'fast' })
   })
@@ -66,6 +69,13 @@ describe.skipIf(!chrome)('createManagedSite', { timeout: 60_000 }, () => {
   it('navigates to another address, but refuses invalid ones', async () => {
     expect(await managed.open(`${origin}/next`)).toMatchObject({ url: `${origin}/next`, title: 'Next page' })
     await expect(managed.open('ftp://example.com/')).rejects.toMatchObject({ status: 400 })
+    await managed.open(`${origin}/`)
+  })
+
+  it('opens every address with no cookies or storage left from before', async () => {
+    await managed.open(`${origin}/remember`)
+    await managed.open(`${origin}/stored`)
+    expect(await managed.extract({ cookie: '#cookie', local: '#local' })).toEqual({ cookie: 'none', local: 'none' })
     await managed.open(`${origin}/`)
   })
 
